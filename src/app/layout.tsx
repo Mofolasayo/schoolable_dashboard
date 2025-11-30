@@ -6,7 +6,7 @@ import { Providers } from './providers';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'schoolable_dashboard',
+  title: 'Schoolable',
   description: 'Built with Next.js, TypeScript, and Shadcn/ui',
 };
 

@@ -1,5 +1,14 @@
 import type { LucideIcon } from 'lucide-react';
-import { ChartSpline, LayoutDashboard, Settings, Users } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Users,
+  CheckSquare,
+  Clock,
+  MessageSquare,
+  Shield,
+  FileText,
+  Settings,
+} from 'lucide-react';
 
 /**
  * Shared navigation item shape for dashboard menus.
@@ -9,6 +18,7 @@ export type NavigationItem = {
   href: string;
   icon?: LucideIcon;
   description?: string;
+  section?: 'main' | 'system';
 };
 
 /**
@@ -20,24 +30,56 @@ export const dashboardNavigation = [
     title: 'Overview',
     href: '/dashboard',
     icon: LayoutDashboard,
-    description: 'Key metrics and latest activity',
+    description: 'High-level snapshot of performance across your organization',
+    section: 'main',
   },
   {
-    title: 'Users',
-    href: '/dashboard/users',
+    title: 'Staff Performance',
+    href: '/dashboard/staff',
     icon: Users,
-    description: 'Manage user accounts and roles',
+    description: 'View and manage staff KPIs and performance',
+    section: 'main',
   },
   {
-    title: 'Insights',
-    href: '/dashboard/insights',
-    icon: ChartSpline,
-    description: 'Charts and analytics for product performance',
+    title: 'Task Management',
+    href: '/dashboard/tasks',
+    icon: CheckSquare,
+    description: 'Track and assign tasks across the organization',
+    section: 'main',
+  },
+  {
+    title: 'Staff Attendance',
+    href: '/dashboard/attendance',
+    icon: Clock,
+    description: 'Monitor staff attendance and punctuality',
+    section: 'main',
+  },
+  {
+    title: 'Announcements',
+    href: '/dashboard/announcements',
+    icon: MessageSquare,
+    description: 'Team-wide announcements and updates',
+    section: 'main',
+  },
+  {
+    title: 'Compliance',
+    href: '/dashboard/compliance',
+    icon: Shield,
+    description: 'Track policy adherence and compliance metrics',
+    section: 'main',
+  },
+  {
+    title: 'Reports',
+    href: '/dashboard/reports',
+    icon: FileText,
+    description: 'Generate and view performance reports',
+    section: 'main',
   },
   {
     title: 'Settings',
     href: '/dashboard/settings',
     icon: Settings,
-    description: 'Configure platform preferences',
+    description: 'Configure platform preferences and KPI formulas',
+    section: 'system',
   },
 ] as const satisfies readonly NavigationItem[];

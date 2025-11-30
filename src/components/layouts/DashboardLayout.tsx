@@ -2,9 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu } from 'lucide-react';
+import { Bell, HelpCircle, Menu, Search, ChevronDown } from 'lucide-react';
 import { useState } from 'react';
-import { config } from '@/config';
+
 import { dashboardNavigation } from '@/config/navigation';
 import { cn } from '@/lib/utils';
 
@@ -22,12 +22,25 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const toggleMobileNav = () => setMobileNavOpen((open) => !open);
 
+  const mainNavItems = dashboardNavigation.filter(
+    (item) => item.section === 'main'
+  );
+  const systemNavItems = dashboardNavigation.filter(
+    (item) => item.section === 'system'
+  );
+
   const renderNavLink = (
     item: (typeof dashboardNavigation)[number],
     opts?: { onNavigate?: () => void; className?: string }
   ) => {
     const { href, title, icon: Icon } = item;
-    const isActive = pathname === href || pathname?.startsWith(`${href}/`);
+    // Fix routing: Only match exact path or child paths, but not parent paths
+    // For /dashboard, only match exactly /dashboard or /dashboard/ (not /dashboard/staff)
+    // For /dashboard/staff, match /dashboard/staff or /dashboard/staff/*
+    const isActive =
+      href === '/dashboard'
+        ? pathname === '/dashboard' || pathname === '/dashboard/'
+        : pathname === href || pathname?.startsWith(`${href}/`);
 
     return (
       <Link
@@ -39,11 +52,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         }}
         aria-current={isActive ? 'page' : undefined}
         className={cn(
-          'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+          'flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
           opts?.className,
           isActive
-            ? 'bg-primary/10 text-primary'
-            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+            ? 'bg-primary text-white'
+            : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
         )}
       >
         {Icon ? <Icon className="h-4 w-4" aria-hidden="true" /> : null}
@@ -53,50 +66,152 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-muted/30">
-      <header className="border-b bg-background">
-        <div className="flex h-16 items-center justify-between px-4 sm:px-6">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={toggleMobileNav}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-input text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 lg:hidden"
-              aria-label="Toggle navigation"
-              aria-expanded={mobileNavOpen}
-            >
-              <Menu className="h-4 w-4" aria-hidden="true" />
-            </button>
-            <Link href="/" className="text-lg font-semibold leading-6">
-              {config.app.name}
-            </Link>
+    <div className="flex min-h-screen bg-[#F8FAFC]">
+      {/* Sidebar - Fixed Width 220px */}
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[220px] flex-col border-r border-border/40 bg-white lg:flex">
+        <div className="flex h-[64px] items-center border-b border-border/40 px-6">
+          <Link href="/dashboard" className="flex items-center gap-2">
+            <img
+              src="/schoolable_logo.png"
+              alt="Schoolable"
+              className="h-8 w-auto object-contain"
+            />
+            <span className="text-lg font-semibold tracking-tight text-gray-800">
+              Schoolable
+            </span>
+          </Link>
+        </div>
+
+        <div className="flex-1 overflow-y-auto py-6">
+          <div className="mb-2 px-4">
+            <nav className="flex flex-col gap-1">
+              {mainNavItems.map((item) => renderNavLink(item))}
+            </nav>
+          </div>
+
+          <div className="mt-6 px-4">
+            <h3 className="mb-2 px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground/70">
+              System
+            </h3>
+            <nav className="flex flex-col gap-1">
+              {systemNavItems.map((item) => renderNavLink(item))}
+            </nav>
           </div>
         </div>
+
+        {/* Version Display */}
+        <div className="border-t border-border/40 px-6 py-4">
+          <p className="text-[11px] font-normal text-muted-foreground/70">
+            v1.0
+          </p>
+        </div>
+      </aside>
+
+      {/* Main Content Wrapper */}
+      <div className="flex flex-1 flex-col lg:pl-[220px]">
+        {/* Top Header - Sticky, Height 64px, z-30 */}
+        <header className="sticky top-0 z-30 flex h-[64px] items-center gap-4 border-b border-border/40 bg-white/80 px-6 backdrop-blur">
+          {/* Mobile Menu Toggle */}
+          <button
+            type="button"
+            onClick={toggleMobileNav}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 lg:hidden"
+            aria-label="Toggle navigation"
+            aria-expanded={mobileNavOpen}
+          >
+            <Menu className="h-5 w-5" aria-hidden="true" />
+          </button>
+
+          {/* Mobile Logo */}
+          <div className="lg:hidden">
+            <Link href="/dashboard" className="flex items-center">
+              <img
+                src="/schoolable_logo.png"
+                alt="Schoolable"
+                className="h-8 w-auto object-contain"
+              />
+            </Link>
+          </div>
+
+          {/* Search */}
+          <div className="flex flex-1 items-center px-4">
+            <div className="relative w-full max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="search"
+                placeholder="Search staff, tasks, KPIs..."
+                className="h-9 w-full rounded-lg border border-border/40 bg-white pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+          </div>
+
+          {/* Right Actions */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="relative flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+              aria-label="Notifications"
+            >
+              <Bell className="h-5 w-5" />
+              <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-primary ring-2 ring-white" />
+            </button>
+            <button
+              type="button"
+              className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+              aria-label="Help"
+            >
+              <HelpCircle className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              className="ml-2 flex items-center gap-3 rounded-md border border-border/40 bg-white py-1.5 pl-2 pr-3 hover:bg-muted/50"
+            >
+              <img
+                src="https://api.dicebear.com/7.x/avataaars/svg?seed=Alex"
+                alt="Alex Johnson"
+                className="h-7 w-7 rounded-full ring-2 ring-gray-50"
+              />
+              <div className="hidden flex-col items-start text-left md:flex">
+                <span className="text-sm font-medium text-gray-700">
+                  Alex Johnson
+                </span>
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Administrator
+                </span>
+              </div>
+              <ChevronDown className="hidden h-3 w-3 text-muted-foreground md:inline" />
+            </button>
+          </div>
+        </header>
+
+        {/* Mobile Navigation Overlay */}
         <nav
           className={cn(
-            'grid gap-2 border-t px-4 py-3 lg:hidden',
-            mobileNavOpen ? 'grid' : 'hidden'
+            'fixed inset-0 z-40 grid place-content-start gap-2 bg-white p-6 lg:hidden',
+            mobileNavOpen ? 'block' : 'hidden'
           )}
         >
+          <div className="mb-6 flex items-center justify-between">
+            <Link href="/dashboard" className="flex items-center gap-2">
+              <img
+                src="/schoolable_logo.png"
+                alt="Schoolable"
+                className="h-8 w-auto object-contain"
+              />
+              <span className="text-lg font-semibold tracking-tight text-gray-800">
+                Schoolable
+              </span>
+            </Link>
+            <button onClick={() => setMobileNavOpen(false)}>
+              <Menu className="h-6 w-6" />
+            </button>
+          </div>
           {dashboardNavigation.map((item) => renderNavLink(item))}
         </nav>
-      </header>
 
-      <div className="flex flex-1">
-        <aside className="hidden w-64 border-r bg-background lg:block">
-          <div className="flex h-16 items-center border-b px-6 text-base font-semibold">
-            {config.app.name} Admin
-          </div>
-          <nav className="flex flex-col gap-1 px-4 py-6">
-            {dashboardNavigation.map((item) =>
-              renderNavLink(item, {
-                className: 'gap-3',
-              })
-            )}
-          </nav>
-        </aside>
-
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto w-full max-w-6xl space-y-6">{children}</div>
+        {/* Main Content */}
+        <main className="flex-1 p-6">
+          <div className="mx-auto w-full max-w-[1600px]">{children}</div>
         </main>
       </div>
     </div>

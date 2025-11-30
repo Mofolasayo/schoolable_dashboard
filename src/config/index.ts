@@ -10,7 +10,7 @@ const featureFlags = {
 
 export const config = {
   app: {
-    name: env.NEXT_PUBLIC_APP_NAME,
+    name: 'Schoolable',
     url: env.NEXT_PUBLIC_APP_URL,
   },
   api: {
