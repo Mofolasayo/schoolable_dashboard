@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable @next/next/no-img-element */
 
 import { Download, Filter, Search, ArrowUpDown } from 'lucide-react';
 import {
@@ -125,8 +126,8 @@ const metrics = [
 const staffData = [
   {
     id: 1,
-    name: 'Sarah Lee',
-    department: 'Sales',
+    name: 'Zainab Olagboye',
+    department: 'Growth',
     role: 'Account Executive',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah',
     weeklyKpi: 85,
@@ -137,7 +138,7 @@ const staffData = [
   },
   {
     id: 2,
-    name: 'Michael Tan',
+    name: 'Darlington Obiakonwa',
     department: 'Support',
     role: 'Support Lead',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Michael',
@@ -149,7 +150,7 @@ const staffData = [
   },
   {
     id: 3,
-    name: 'Priya Patel',
+    name: 'Deborah Olabode',
     department: 'Operations',
     role: 'Ops Manager',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Priya',
@@ -161,7 +162,7 @@ const staffData = [
   },
   {
     id: 4,
-    name: 'Daniel Wu',
+    name: 'Mofolasayo Osikoya',
     department: 'Engineering',
     role: 'Senior Engineer',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Daniel',

@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable @next/next/no-img-element */
 
 import { useState, useEffect } from 'react';
 import { Download, Search, Star } from 'lucide-react';
@@ -7,7 +8,7 @@ import { Download, Search, Star } from 'lucide-react';
 const teamMembers = [
   {
     id: 1,
-    name: 'Sarah Lee',
+    name: 'Zainab Olagboye',
     title: 'Account Executive',
     department: 'Sales',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah',
@@ -32,7 +33,7 @@ const teamMembers = [
   },
   {
     id: 2,
-    name: 'Michael Tan',
+    name: 'Darlington Obiakonwa',
     title: 'Support Lead',
     department: 'Support',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Michael',
@@ -56,7 +57,7 @@ const teamMembers = [
   },
   {
     id: 3,
-    name: 'Priya Patel',
+    name: 'Deborah Olabode',
     title: 'Ops Manager',
     department: 'Operations',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Priya',

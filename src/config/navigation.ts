@@ -34,6 +34,13 @@ export const dashboardNavigation = [
     section: 'main',
   },
   {
+    title: 'Staff Directory',
+    href: '/dashboard/users',
+    icon: Users,
+    description: 'Master list of all employees and their details',
+    section: 'main',
+  },
+  {
     title: 'Staff Performance',
     href: '/dashboard/staff',
     icon: Users,

@@ -1,16 +1,25 @@
 'use client';
+/* eslint-disable @next/next/no-img-element */
 
-import { useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import {
-  Download,
+  getTasks,
+  createTask,
+  updateTaskStatus,
+  deleteTask,
+  createTaskComment,
+  updateTaskDescription,
+} from '@/app/actions/tasks';
+import { getStaffProfiles, StaffProfile } from '@/app/actions/staff';
+import { toast } from 'sonner';
+
+import { useState, useEffect } from 'react';
+import {
   Plus,
   Search,
-  Filter,
   Clock,
   CheckCircle2,
   AlertCircle,
-  ChevronLeft,
-  ChevronRight,
   MoreVertical,
   X,
   Calendar,
@@ -22,6 +31,8 @@ import {
   BarChart3,
   FileText,
   Image as ImageIcon,
+  Trash2,
+  Pencil,
 } from 'lucide-react';
 
 type TaskStatus = 'Pending' | 'In Progress' | 'Completed' | 'Overdue';
@@ -86,180 +97,137 @@ type NewTaskForm = {
   priority: TaskPriority;
   dueDate: string;
   tags: string[];
+  subtasks: { title: string }[];
+  attachments: File[];
 };
 
-// Mock task data
-const initialTasks: Task[] = [
-  {
-    id: 1,
-    title: 'Update customer onboarding documentation',
-    description:
-      'Review and update the customer onboarding process documentation to reflect new compliance requirements.',
-    assignee: {
-      name: 'Sarah Lee',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah',
-      department: 'Sales',
-    },
-    status: 'In Progress',
-    statusColor: 'bg-blue-100 text-blue-700',
-    priority: 'High',
-    priorityColor: 'bg-red-100 text-red-700',
-    dueDate: '2024-01-15',
-    dueIn: '2 days',
-    progress: 65,
-    tags: ['Documentation', 'Onboarding'],
-    created: '2024-01-10',
-    organization: 'Sales',
-    timeSpent: '12h 30m',
-    estimatedTime: '16h',
-    comments: [
-      {
-        id: 1,
-        author: 'Sarah Lee',
-        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah',
-        text: 'Started reviewing the current documentation. Found several sections that need updates.',
-        timestamp: '2024-01-10T10:30:00',
-      },
-      {
-        id: 2,
-        author: 'Manager',
-        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Manager',
-        text: 'Please prioritize the compliance section updates.',
-        timestamp: '2024-01-11T14:20:00',
-      },
-    ],
-    attachments: [
-      { id: 1, name: 'current_docs.pdf', size: '2.4 MB', type: 'pdf' },
-      { id: 2, name: 'compliance_req.png', size: '1.2 MB', type: 'image' },
-    ],
-    subtasks: [
-      { id: 1, title: 'Review existing documentation', completed: true },
-      { id: 2, title: 'Update compliance section', completed: true },
-      { id: 3, title: 'Add new onboarding steps', completed: false },
-      { id: 4, title: 'Review with legal team', completed: false },
-    ],
-  },
-  {
-    id: 2,
-    title: 'Conduct quarterly performance review meetings',
-    description:
-      'Schedule and conduct performance review meetings with all team members for Q1 2024.',
-    assignee: {
-      name: 'Priya Patel',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Priya',
-      department: 'Operations',
-    },
-    status: 'Completed',
-    statusColor: 'bg-emerald-100 text-emerald-700',
-    priority: 'Medium',
-    priorityColor: 'bg-orange-100 text-orange-700',
-    dueDate: '2024-01-12',
-    dueIn: 'Completed',
-    progress: 100,
-    tags: ['HR', 'Reviews'],
-    created: '2024-01-05',
-  },
-  {
-    id: 3,
-    title: 'Implement new payment gateway integration',
-    description:
-      'Integrate new payment gateway provider and test all payment flows across the platform.',
-    assignee: {
-      name: 'David Kim',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=David',
-      department: 'Engineering',
-    },
-    status: 'Overdue',
-    statusColor: 'bg-red-100 text-red-700',
-    priority: 'High',
-    priorityColor: 'bg-red-100 text-red-700',
-    dueDate: '2024-01-08',
-    dueIn: '5 days ago',
-    progress: 40,
-    tags: ['Engineering', 'Integration'],
-    created: '2024-01-01',
-  },
-  {
-    id: 4,
-    title: 'Prepare monthly sales report',
-    description:
-      'Compile and analyze sales data for December 2023 and prepare comprehensive report for management.',
-    assignee: {
-      name: 'Maria Garcia',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Maria',
-      department: 'Sales',
-    },
-    status: 'Pending',
-    statusColor: 'bg-gray-100 text-gray-700',
-    priority: 'Low',
-    priorityColor: 'bg-gray-100 text-gray-700',
-    dueDate: '2024-01-20',
-    dueIn: '7 days',
-    progress: 0,
-    tags: ['Reports', 'Sales'],
-    created: '2024-01-11',
-  },
-  {
-    id: 5,
-    title: 'Update company website content',
-    description:
-      'Review and update key pages on the company website with latest product information and features.',
-    assignee: {
-      name: 'Michael Tan',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Michael',
-      department: 'Marketing',
-    },
-    status: 'In Progress',
-    statusColor: 'bg-blue-100 text-blue-700',
-    priority: 'Medium',
-    priorityColor: 'bg-orange-100 text-orange-700',
-    dueDate: '2024-01-18',
-    dueIn: '5 days',
-    progress: 30,
-    tags: ['Marketing', 'Website'],
-    created: '2024-01-09',
-  },
-];
+type UserProfile = {
+  id: string;
+  full_name?: string | null;
+  role?: string | null;
+  department?: string | null;
+  avatar_url?: string | null;
+};
 
-const summaryMetrics = [
-  {
-    label: 'Total Tasks',
-    value: '148',
-    detail: '+12 from last week',
-    icon: Clock,
-    color: 'text-primary',
-  },
-  {
-    label: 'In Progress',
-    value: '64',
-    detail: '43% of total tasks',
-    icon: Clock,
-    color: 'text-blue-600',
-  },
-  {
-    label: 'Completed',
-    value: '92',
-    detail: '62% completion rate',
-    icon: CheckCircle2,
-    color: 'text-emerald-600',
-  },
-  {
-    label: 'Overdue',
-    value: '26',
-    detail: 'Needs attention',
-    icon: AlertCircle,
-    color: 'text-red-600',
-  },
-];
-
+// ... inside component ...
 export default function TaskManagementPage() {
-  const [taskList, setTaskList] = useState<Task[]>(
-    initialTasks.map((task) => ({
-      ...task,
-      originalStatus: task.status,
-      originalStatusColor: task.statusColor,
-    }))
-  );
+  const [newComment, setNewComment] = useState('');
+  const [isPostingComment, setIsPostingComment] = useState(false);
+  // ... existing state ...
+  const [taskList, setTaskList] = useState<Task[]>([]);
+  const [staffList, setStaffList] = useState<StaffProfile[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [customTag, setCustomTag] = useState('');
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [editDescriptionText, setEditDescriptionText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+
+  useEffect(() => {
+    const loadUserProfile = async () => {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+        setUserProfile(data);
+      }
+    };
+    loadUserProfile();
+  }, []);
+
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        const [tasks, staff] = await Promise.all([
+          getTasks(),
+          getStaffProfiles(),
+        ]);
+        setTaskList(tasks as unknown as Task[]);
+        setStaffList(staff);
+      } catch {
+        toast.error('Failed to load tasks');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadData();
+    // Realtime subscription
+    const supabase = createClient();
+    const channel = supabase
+      .channel('tasks_dashboard_changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tasks' },
+        () => loadData()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'task_comments' },
+        () => loadData()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'task_subtasks' },
+        () => loadData()
+      )
+      .subscribe();
+
+    // Polling fallback (every 2 minutes)
+    const intervalId = setInterval(() => {
+      loadData();
+    }, 120000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(intervalId);
+    };
+  }, []);
+
+  // Calculate metrics
+  const totalTasks = taskList.length;
+  const inProgress = taskList.filter((t) => t.status === 'In Progress').length;
+  const completed = taskList.filter((t) => t.status === 'Completed').length;
+  const overdue = taskList.filter((t) => t.status === 'Overdue').length;
+
+  const summaryMetrics = [
+    {
+      label: 'Total Tasks',
+      value: totalTasks.toString(),
+      detail: 'all time',
+      icon: Clock,
+      color: 'text-primary',
+    },
+    {
+      label: 'In Progress',
+      value: inProgress.toString(),
+      detail: `${totalTasks > 0 ? Math.round((inProgress / totalTasks) * 100) : 0}% of total`,
+      icon: Clock,
+      color: 'text-blue-600',
+    },
+    {
+      label: 'Completed',
+      value: completed.toString(),
+      detail: `${totalTasks > 0 ? Math.round((completed / totalTasks) * 100) : 0}% completion`,
+      icon: CheckCircle2,
+      color: 'text-emerald-600',
+    },
+    {
+      label: 'Overdue',
+      value: overdue.toString(),
+      detail: 'Needs attention',
+      icon: AlertCircle,
+      color: 'text-red-600',
+    },
+  ];
   const [selectedStatus, setSelectedStatus] = useState<TaskStatus | 'All'>(
     'All'
   );
@@ -278,6 +246,8 @@ export default function TaskManagementPage() {
     priority: 'Medium',
     dueDate: '',
     tags: [],
+    subtasks: [],
+    attachments: [],
   });
   const recordsPerPage = 5;
   const statusFilters: (TaskStatus | 'All')[] = [
@@ -294,42 +264,23 @@ export default function TaskManagementPage() {
     'Low',
   ];
 
-  const organizations = [
+  // Unique departments from staff list
+  // Unique departments from staff list
+  const departments = [
     'All',
-    'Sales',
-    'Support',
-    'Operations',
-    'Engineering',
-    'Marketing',
-    'HR',
+    ...Array.from(
+      new Set(staffList.map((s) => s.department || 'Unassigned'))
+    ).filter((d) => d !== 'All' && d !== 'Unassigned' && d !== 'Unknown'),
   ];
-  const assignees: Assignee[] = [
-    {
-      name: 'Sarah Lee',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah',
-      department: 'Sales',
-    },
-    {
-      name: 'Priya Patel',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Priya',
-      department: 'Operations',
-    },
-    {
-      name: 'David Kim',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=David',
-      department: 'Engineering',
-    },
-    {
-      name: 'Maria Garcia',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Maria',
-      department: 'Sales',
-    },
-    {
-      name: 'Michael Tan',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Michael',
-      department: 'Marketing',
-    },
-  ];
+
+  // Filtered assignees based on selected department in modal
+  const validAssignees = staffList.filter(
+    (s) =>
+      !newTask.organization ||
+      newTask.organization === '' ||
+      s.department === newTask.organization
+  );
+
   const availableTags = [
     'Documentation',
     'Onboarding',
@@ -365,21 +316,17 @@ export default function TaskManagementPage() {
   const attachmentCount = selectedTask?.attachments?.length ?? 0;
   const commentCount = selectedTask?.comments?.length ?? 0;
 
-  const toggleTaskCompletion = (taskId: number) => {
+  const toggleTaskCompletion = async (taskId: number) => {
+    // 1. Optimistic Update
     setTaskList((prev) =>
       prev.map((task) => {
         if (task.id !== taskId) return task;
         const isCompleted = task.status === 'Completed';
-        const nextStatus = isCompleted
-          ? (task.originalStatus ?? 'Pending')
-          : 'Completed';
+        const nextStatus = isCompleted ? 'Pending' : 'Completed';
         const nextStatusColor = isCompleted
-          ? (task.originalStatusColor ?? 'bg-gray-100 text-gray-700')
+          ? 'bg-gray-100 text-gray-700'
           : 'bg-emerald-100 text-emerald-700';
-        const nextProgress =
-          !isCompleted && typeof task.progress === 'number'
-            ? 100
-            : task.progress;
+        const nextProgress = isCompleted ? 0 : 100;
 
         return {
           ...task,
@@ -389,7 +336,28 @@ export default function TaskManagementPage() {
         };
       })
     );
+
+    // 2. Server Action
+    const task = taskList.find((t) => t.id === taskId);
+    if (!task) return;
+    const newStatus = task.status === 'Completed' ? 'Pending' : 'Completed';
+    try {
+      const res = await updateTaskStatus(taskId, newStatus);
+      if (!res.success) throw new Error(res.error);
+      const updated = await getTasks();
+      setTaskList(updated as unknown as Task[]);
+    } catch {
+      toast.error('Failed to update status');
+      // Revert (reload all)
+      const all = await getTasks();
+      setTaskList(all as unknown as Task[]);
+    }
   };
+
+  const currentTasks = filteredTasks.slice(
+    (currentPage - 1) * recordsPerPage,
+    currentPage * recordsPerPage
+  );
 
   return (
     <div className="space-y-6">
@@ -402,14 +370,6 @@ export default function TaskManagementPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button className="flex items-center gap-2 rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
-            <Filter className="h-3.5 w-3.5" />
-            Filters
-          </button>
-          <button className="flex items-center gap-2 rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
-            <Download className="h-3.5 w-3.5" />
-            Export
-          </button>
           <button
             onClick={() => setShowCreateModal(true)}
             className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-primary/90"
@@ -522,122 +482,166 @@ export default function TaskManagementPage() {
 
         {/* Tasks List */}
         <div className="divide-y divide-border/40">
-          {filteredTasks.map((task) => (
-            <div
-              key={task.id}
-              className="cursor-pointer p-6 transition-colors hover:bg-muted/20"
-              onClick={() => setSelectedTaskId(task.id)}
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <div className="mb-3 flex items-start gap-4">
-                    <div className="flex-shrink-0">
-                      <input
-                        type="checkbox"
-                        checked={task.status === 'Completed'}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          toggleTaskCompletion(task.id);
-                          setSelectedTaskId(task.id);
-                        }}
-                        className="h-4 w-4 rounded border-border/40 text-primary focus:ring-primary"
-                      />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="mb-2 flex items-start justify-between gap-4">
-                        <div className="flex-1">
-                          <h3 className="mb-1 text-sm font-medium text-gray-800">
-                            {task.title}
-                          </h3>
-                          <p className="line-clamp-2 text-xs text-muted-foreground">
-                            {task.description}
-                          </p>
-                        </div>
-                        <button className="flex-shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-                          <MoreVertical className="h-4 w-4" />
-                        </button>
+          {isLoading ? (
+            Array.from({ length: 5 }).map((_, i) => (
+              <div
+                key={i}
+                className="flex animate-pulse items-center justify-between p-6"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="h-4 w-4 rounded bg-slate-200" />{' '}
+                  {/* Checkbox */}
+                  <div>
+                    <div className="mb-2 h-4 w-48 rounded bg-slate-200" />
+                    <div className="h-3 w-32 rounded bg-slate-200" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="h-8 w-8 rounded-full bg-slate-200" />
+                  <div className="h-4 w-20 rounded bg-slate-200" />
+                </div>
+              </div>
+            ))
+          ) : currentTasks.length === 0 ? (
+            <div className="p-12 text-center">
+              <div className="mb-4 inline-flex items-center justify-center rounded-full bg-gray-100 p-3">
+                <ListTodo className="h-6 w-6 text-gray-400" />
+              </div>
+              <h3 className="text-sm font-medium text-gray-900">
+                No tasks found
+              </h3>
+              <p className="mt-1 text-sm text-gray-500">
+                {searchQuery || selectedStatus !== 'All'
+                  ? 'No tasks match your filters.'
+                  : "You haven't created any tasks yet."}
+              </p>
+              <div className="mt-6">
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="inline-flex items-center rounded-md bg-primary px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
+                >
+                  <Plus className="-ml-0.5 mr-1.5 h-4 w-4" aria-hidden="true" />
+                  New Task
+                </button>
+              </div>
+            </div>
+          ) : (
+            currentTasks.map((task) => (
+              <div
+                key={task.id}
+                className="cursor-pointer p-6 transition-colors hover:bg-muted/20"
+                onClick={() => setSelectedTaskId(task.id)}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-3 flex items-start gap-4">
+                      <div className="flex-shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={task.status === 'Completed'}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            toggleTaskCompletion(task.id);
+                          }}
+                          className="h-4 w-4 rounded border-border/40 text-primary focus:ring-primary"
+                        />
                       </div>
-
-                      {/* Tags */}
-                      <div className="mb-3 flex flex-wrap items-center gap-2">
-                        {task.tags.map((tag, idx) => (
-                          <span
-                            key={idx}
-                            className="inline-flex rounded-full bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-
-                      {/* Task Meta */}
-                      <div className="flex flex-wrap items-center gap-4 text-xs">
-                        {/* Assignee */}
-                        <div className="flex items-center gap-2">
-                          <img
-                            src={task.assignee.avatar}
-                            alt={task.assignee.name}
-                            className="h-5 w-5 rounded-full ring-2 ring-white"
-                          />
-                          <span className="text-gray-700">
-                            {task.assignee.name}
-                          </span>
-                          <span className="text-muted-foreground">•</span>
-                          <span className="text-muted-foreground">
-                            {task.assignee.department}
-                          </span>
-                        </div>
-
-                        {/* Status and Priority */}
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-medium ${task.statusColor}`}
-                          >
-                            {task.status}
-                          </span>
-                          <span
-                            className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-medium ${task.priorityColor}`}
-                          >
-                            {task.priority}
-                          </span>
-                        </div>
-
-                        {/* Due Date */}
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-3 w-3 text-muted-foreground" />
-                          <span
-                            className={`${task.status === 'Overdue' ? 'text-red-600' : 'text-muted-foreground'}`}
-                          >
-                            {task.dueIn}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Progress Bar */}
-                      {task.status === 'In Progress' && (
-                        <div className="mt-3">
-                          <div className="mb-1 flex items-center justify-between">
-                            <span className="text-[10px] text-muted-foreground">
-                              Progress
-                            </span>
-                            <span className="text-[10px] font-medium text-gray-700">
-                              {task.progress}%
-                            </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-2 flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <h3 className="mb-1 text-sm font-medium text-gray-800">
+                              {task.title}
+                            </h3>
+                            <p className="line-clamp-2 text-xs text-muted-foreground">
+                              {task.description}
+                            </p>
                           </div>
-                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                            <div
-                              className="h-full rounded-full bg-primary transition-all"
-                              style={{ width: `${task.progress}%` }}
+                          <button className="flex-shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                            <MoreVertical className="h-4 w-4" />
+                          </button>
+                        </div>
+
+                        {/* Tags */}
+                        <div className="mb-3 flex flex-wrap items-center gap-2">
+                          {task.tags.map((tag, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex rounded-full bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+
+                        {/* Task Meta */}
+                        <div className="flex flex-wrap items-center gap-4 text-xs">
+                          {/* Assignee */}
+                          <div className="flex items-center gap-2">
+                            <img
+                              src={task.assignee.avatar}
+                              alt={task.assignee.name}
+                              className="h-5 w-5 rounded-full ring-2 ring-white"
                             />
+                            <span className="text-gray-700">
+                              {task.assignee.name}
+                            </span>
+                            <span className="text-muted-foreground">•</span>
+                            <span className="text-muted-foreground">
+                              {task.assignee.department}
+                            </span>
+                          </div>
+
+                          {/* Status and Priority */}
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-medium ${task.statusColor}`}
+                            >
+                              {task.status}
+                            </span>
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-medium ${task.priorityColor}`}
+                            >
+                              {task.priority}
+                            </span>
+                          </div>
+
+                          {/* Due Date */}
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3 text-muted-foreground" />
+                            <span
+                              className={`${task.status === 'Overdue' ? 'text-red-600' : 'text-muted-foreground'}`}
+                            >
+                              {task.dueIn}
+                            </span>
                           </div>
                         </div>
-                      )}
+
+                        {/* Progress Bar */}
+                        {task.status === 'In Progress' && (
+                          <div className="mt-3">
+                            <div className="mb-1 flex items-center justify-between">
+                              <span className="text-[10px] text-muted-foreground">
+                                Progress
+                              </span>
+                              <span className="text-[10px] font-medium text-gray-700">
+                                {task.progress}%
+                              </span>
+                            </div>
+                            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                              <div
+                                className="h-full rounded-full bg-primary transition-all"
+                                style={{ width: `${task.progress}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
 
         {/* Pagination */}
@@ -650,30 +654,20 @@ export default function TaskManagementPage() {
             </p>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
-                className="flex items-center gap-1 rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <ChevronLeft className="h-3.5 w-3.5" />
                 Previous
               </button>
               <button
-                onClick={() => setCurrentPage(currentPage + 1)}
+                onClick={() => setCurrentPage((p) => p + 1)}
                 disabled={currentPage * recordsPerPage >= filteredTasks.length}
-                className="flex items-center gap-1 rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Next
-                <ChevronRight className="h-3.5 w-3.5" />
               </button>
             </div>
-          </div>
-        )}
-
-        {filteredTasks.length === 0 && (
-          <div className="p-12 text-center">
-            <p className="text-sm text-muted-foreground">
-              No tasks found matching your filters.
-            </p>
           </div>
         )}
       </div>
@@ -703,6 +697,8 @@ export default function TaskManagementPage() {
                     priority: 'Medium',
                     dueDate: '',
                     tags: [],
+                    subtasks: [],
+                    attachments: [],
                   });
                 }}
                 className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -749,7 +745,7 @@ export default function TaskManagementPage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-gray-700">
-                    Organization *
+                    Department *
                   </label>
                   <select
                     value={newTask.organization}
@@ -758,12 +754,12 @@ export default function TaskManagementPage() {
                     }
                     className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
                   >
-                    <option value="">Select organization</option>
-                    {organizations
-                      .filter((org) => org !== 'All')
-                      .map((org) => (
-                        <option key={org} value={org}>
-                          {org}
+                    <option value="">Select Department</option>
+                    {departments
+                      .filter((dept) => dept !== 'All')
+                      .map((dept) => (
+                        <option key={dept} value={dept}>
+                          {dept}
                         </option>
                       ))}
                   </select>
@@ -774,16 +770,16 @@ export default function TaskManagementPage() {
                     Assignee *
                   </label>
                   <select
-                    value={newTask.assignee}
+                    value={newTask.assignee || ''}
                     onChange={(e) =>
                       setNewTask({ ...newTask, assignee: e.target.value })
                     }
                     className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
                   >
                     <option value="">Select assignee</option>
-                    {assignees.map((assignee) => (
-                      <option key={assignee.name} value={assignee.name}>
-                        {assignee.name} ({assignee.department})
+                    {validAssignees.map((staff) => (
+                      <option key={staff.id} value={staff.id}>
+                        {staff.full_name} ({staff.department})
                       </option>
                     ))}
                   </select>
@@ -853,30 +849,207 @@ export default function TaskManagementPage() {
                     </span>
                   ))}
                 </div>
-                <select
-                  onChange={(e) => {
-                    if (
-                      e.target.value &&
-                      !newTask.tags.includes(e.target.value)
-                    ) {
+                <div className="flex gap-2">
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      if (
+                        e.target.value &&
+                        !newTask.tags.includes(e.target.value)
+                      ) {
+                        setNewTask({
+                          ...newTask,
+                          tags: [...newTask.tags, e.target.value],
+                        });
+                      }
+                    }}
+                    className="flex-1 rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="">Add existing tag</option>
+                    {availableTags
+                      .filter((tag) => !newTask.tags.includes(tag))
+                      .map((tag) => (
+                        <option key={tag} value={tag}>
+                          {tag}
+                        </option>
+                      ))}
+                  </select>
+                  <div className="flex flex-1 items-center gap-2">
+                    <input
+                      type="text"
+                      value={customTag}
+                      onChange={(e) => setCustomTag(e.target.value)}
+                      placeholder="Or type custom tag"
+                      className="flex-1 rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (
+                            customTag.trim() &&
+                            !newTask.tags.includes(customTag.trim())
+                          ) {
+                            setNewTask({
+                              ...newTask,
+                              tags: [...newTask.tags, customTag.trim()],
+                            });
+                            setCustomTag('');
+                          }
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault(); // Prevent form submission if inside form
+                        if (
+                          customTag.trim() &&
+                          !newTask.tags.includes(customTag.trim())
+                        ) {
+                          setNewTask({
+                            ...newTask,
+                            tags: [...newTask.tags, customTag.trim()],
+                          });
+                          setCustomTag('');
+                        }
+                      }}
+                      disabled={!customTag.trim()}
+                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/40 bg-white text-muted-foreground hover:bg-muted/50 hover:text-foreground disabled:opacity-50"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Subtasks */}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-xs font-medium text-gray-700">
+                    Subtasks
+                  </label>
+                  <button
+                    onClick={() =>
                       setNewTask({
                         ...newTask,
-                        tags: [...newTask.tags, e.target.value],
-                      });
+                        subtasks: [...newTask.subtasks, { title: '' }],
+                      })
                     }
-                    e.target.value = '';
-                  }}
-                  className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
-                >
-                  <option value="">Add a tag</option>
-                  {availableTags
-                    .filter((tag) => !newTask.tags.includes(tag))
-                    .map((tag) => (
-                      <option key={tag} value={tag}>
-                        {tag}
-                      </option>
-                    ))}
-                </select>
+                    className="flex items-center gap-1 text-[10px] font-medium text-primary hover:text-primary/80"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Add Subtask
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {newTask.subtasks.map((subtask, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={subtask.title}
+                        onChange={(e) => {
+                          const updated = [...(newTask.subtasks || [])];
+                          if (updated[idx]) {
+                            updated[idx] = {
+                              ...updated[idx],
+                              title: e.target.value,
+                            };
+                            setNewTask({ ...newTask, subtasks: updated });
+                          }
+                        }}
+                        placeholder={`Subtask ${idx + 1}`}
+                        className="flex-1 rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
+                      />
+                      <button
+                        onClick={() => {
+                          setNewTask({
+                            ...newTask,
+                            subtasks: newTask.subtasks.filter(
+                              (_, i) => i !== idx
+                            ),
+                          });
+                        }}
+                        className="text-muted-foreground hover:text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                  {newTask.subtasks.length === 0 && (
+                    <p className="text-[10px] italic text-muted-foreground">
+                      No subtasks added yet.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Attachments */}
+              <div>
+                <label className="mb-2 block text-xs font-medium text-gray-700">
+                  Attachments
+                </label>
+                <div className="rounded-lg border border-dashed border-border/40 bg-gray-50/50 p-4">
+                  <div className="space-y-3">
+                    {newTask.attachments.length > 0 && (
+                      <div className="space-y-2">
+                        {newTask.attachments.map((file, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between rounded-md border border-border/40 bg-white p-2"
+                          >
+                            <div className="flex items-center gap-2 overflow-hidden">
+                              {file.type.includes('image') ? (
+                                <ImageIcon className="h-4 w-4 flex-shrink-0 text-blue-500" />
+                              ) : (
+                                <FileText className="h-4 w-4 flex-shrink-0 text-red-500" />
+                              )}
+                              <span className="truncate text-xs text-gray-700">
+                                {file.name}
+                              </span>
+                              <span className="flex-shrink-0 text-[10px] text-muted-foreground">
+                                ({(file.size / 1024).toFixed(1)} KB)
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => {
+                                setNewTask({
+                                  ...newTask,
+                                  attachments: newTask.attachments.filter(
+                                    (_, i) => i !== idx
+                                  ),
+                                });
+                              }}
+                              className="text-muted-foreground hover:text-red-600"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex justify-center">
+                      <label className="flex cursor-pointer items-center gap-2 rounded-md border border-border/40 bg-white px-3 py-2 text-xs font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted/50 hover:text-foreground">
+                        <Paperclip className="h-3.5 w-3.5" />
+                        <span>Upload Files</span>
+                        <input
+                          type="file"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files) {
+                              setNewTask({
+                                ...newTask,
+                                attachments: [
+                                  ...newTask.attachments,
+                                  ...Array.from(e.target.files),
+                                ],
+                              });
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -893,6 +1066,8 @@ export default function TaskManagementPage() {
                     priority: 'Medium',
                     dueDate: '',
                     tags: [],
+                    subtasks: [],
+                    attachments: [],
                   });
                 }}
                 className="rounded-md border border-border/40 bg-white px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
@@ -900,21 +1075,87 @@ export default function TaskManagementPage() {
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  setShowCreateModal(false);
-                  setNewTask({
-                    title: '',
-                    description: '',
-                    assignee: '',
-                    organization: '',
-                    priority: 'Medium',
-                    dueDate: '',
-                    tags: [],
-                  });
+                disabled={isSubmitting}
+                onClick={async () => {
+                  if (!newTask.title || !newTask.description) {
+                    toast.error('Please fill in required fields');
+                    return;
+                  }
+
+                  setIsSubmitting(true);
+                  try {
+                    // Upload attachments first
+                    const uploadedAttachments = [];
+                    const supabase = createClient();
+
+                    if (newTask.attachments.length > 0) {
+                      for (const file of newTask.attachments) {
+                        // Check if it's a File object (it should be)
+                        if (file instanceof File) {
+                          const fileExt = file.name.split('.').pop();
+                          const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
+                          const filePath = `${fileName}`;
+
+                          const { error: uploadError } = await supabase.storage
+                            .from('task-attachments')
+                            .upload(filePath, file);
+
+                          if (uploadError) {
+                            console.error('Upload error:', uploadError);
+                            toast.error(`Failed to upload ${file.name}`);
+                            continue;
+                          }
+
+                          const {
+                            data: { publicUrl },
+                          } = supabase.storage
+                            .from('task-attachments')
+                            .getPublicUrl(filePath);
+
+                          uploadedAttachments.push({
+                            name: file.name,
+                            size: file.size,
+                            type: file.type,
+                            url: publicUrl,
+                            path: filePath,
+                          });
+                        }
+                      }
+                    }
+
+                    const taskPayload: CreateTaskData = {
+                      ...newTask,
+                      attachments: uploadedAttachments, // Replace File objects with metadata
+                    };
+
+                    const res = await createTask(taskPayload);
+                    if (res.success) {
+                      toast.success('Task created successfully');
+                      const updatedTasks = await getTasks();
+                      setTaskList(updatedTasks as unknown as Task[]);
+                      setShowCreateModal(false);
+                      setNewTask({
+                        title: '',
+                        description: '',
+                        assignee: '',
+                        organization: '',
+                        priority: 'Medium',
+                        dueDate: '',
+                        tags: [],
+                        subtasks: [],
+                        attachments: [],
+                      });
+                    } else {
+                      toast.error(res.error || 'Failed to create task');
+                    }
+                  } catch {
+                    toast.error('An unexpected error occurred');
+                  }
+                  setIsSubmitting(false);
                 }}
-                className="rounded-md bg-primary px-4 py-2 text-xs font-medium text-white shadow-sm transition-colors hover:bg-primary/90"
+                className="rounded-md bg-primary px-4 py-2 text-xs font-medium text-white shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
               >
-                Create Task
+                {isSubmitting ? 'Creating...' : 'Create Task'}
               </button>
             </div>
           </div>
@@ -971,13 +1212,66 @@ export default function TaskManagementPage() {
             {/* Modal Content */}
             <div className="flex-1 space-y-6 overflow-y-auto p-6">
               {/* Description */}
+              {/* Description */}
               <div>
-                <h4 className="mb-2 text-xs font-medium text-gray-700">
-                  Description
-                </h4>
-                <p className="text-sm leading-relaxed text-gray-800">
-                  {selectedTask.description}
-                </p>
+                <div className="mb-2 flex items-center justify-between">
+                  <h4 className="text-xs font-medium text-gray-700">
+                    Description
+                  </h4>
+                  {!isEditingDescription && (
+                    <button
+                      onClick={() => {
+                        setEditDescriptionText(selectedTask.description);
+                        setIsEditingDescription(true);
+                      }}
+                      className="p-1 text-muted-foreground transition-colors hover:text-primary"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+
+                {isEditingDescription ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={editDescriptionText}
+                      onChange={(e) => setEditDescriptionText(e.target.value)}
+                      rows={4}
+                      className="w-full resize-none rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => setIsEditingDescription(false)}
+                        className="px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setIsEditingDescription(false);
+                          const res = await updateTaskDescription(
+                            selectedTask.id,
+                            editDescriptionText
+                          );
+                          if (res.success) {
+                            toast.success('Description updated');
+                            const updated = await getTasks();
+                            setTaskList(updated as unknown as Task[]);
+                          } else {
+                            toast.error('Failed to update description');
+                          }
+                        }}
+                        className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-primary/90"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
+                    {selectedTask.description}
+                  </p>
+                )}
               </div>
 
               {/* Task Details Grid */}
@@ -1235,7 +1529,10 @@ export default function TaskManagementPage() {
                   ))}
                   <div className="flex items-start gap-3 border-t border-border/40 pt-2">
                     <img
-                      src={selectedTask.assignee.avatar}
+                      src={
+                        userProfile?.avatar_url ||
+                        `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile?.employee_id || userProfile?.email || userProfile?.full_name || 'User'}`
+                      }
                       alt="You"
                       className="h-8 w-8 flex-shrink-0 rounded-full ring-2 ring-white"
                     />
@@ -1243,10 +1540,36 @@ export default function TaskManagementPage() {
                       <textarea
                         placeholder="Add a comment..."
                         rows={2}
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
                         className="w-full resize-none rounded-lg border border-border/40 bg-white px-3 py-2 text-xs outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
                       />
-                      <button className="mt-2 text-xs font-medium text-primary hover:text-primary/80">
-                        Post comment
+                      <button
+                        onClick={async () => {
+                          if (!newComment.trim()) return;
+                          setIsPostingComment(true);
+                          const res = await createTaskComment(
+                            selectedTask.id,
+                            newComment
+                          );
+                          if (res.success) {
+                            toast.success('Comment posted');
+                            setNewComment('');
+                            // Refresh tasks to show new comment
+                            const updatedTasks = await getTasks();
+                            setTaskList(updatedTasks as unknown as Task[]);
+                            // Update selected task view via setTaskList triggering re-render of derived selectedTask
+                            // const updatedSelected = updatedTasks.find((t: any) => t.id === selectedTask.id);
+                            // if (updatedSelected) setSelectedTask(updatedSelected as any);
+                          } else {
+                            toast.error('Failed to post comment');
+                          }
+                          setIsPostingComment(false);
+                        }}
+                        disabled={isPostingComment || !newComment.trim()}
+                        className="mt-2 text-xs font-medium text-primary hover:text-primary/80 disabled:opacity-50"
+                      >
+                        {isPostingComment ? 'Posting...' : 'Post comment'}
                       </button>
                     </div>
                   </div>
@@ -1264,7 +1587,9 @@ export default function TaskManagementPage() {
                     <div className="flex-1">
                       <p className="text-xs text-gray-800">
                         Task created by{' '}
-                        <span className="font-medium">System Admin</span>
+                        <span className="font-medium">
+                          {userProfile?.full_name}
+                        </span>
                       </p>
                       <p className="mt-0.5 text-[10px] text-muted-foreground">
                         {new Date(selectedTask.created).toLocaleDateString(
@@ -1332,19 +1657,37 @@ export default function TaskManagementPage() {
             </div>
 
             {/* Modal Footer */}
-            <div className="flex flex-shrink-0 items-center justify-end gap-2 border-t border-border/40 p-4">
+            <div className="flex flex-shrink-0 items-center justify-between border-t border-border/40 p-4">
               <button
-                onClick={() => setSelectedTaskId(null)}
-                className="rounded-md border border-border/40 bg-white px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                onClick={async () => {
+                  if (confirm('Are you sure you want to delete this task?')) {
+                    setIsDeleting(true);
+                    const res = await deleteTask(selectedTask.id);
+                    if (res.success) {
+                      toast.success('Task deleted');
+                      setSelectedTaskId(null);
+                      const updated = await getTasks();
+                      setTaskList(updated as unknown as Task[]);
+                    } else {
+                      toast.error('Failed to delete task');
+                    }
+                    setIsDeleting(false);
+                  }
+                }}
+                disabled={isDeleting}
+                className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50"
               >
-                Close
+                <Trash2 className="h-3.5 w-3.5" />
+                {isDeleting ? 'Deleting...' : 'Delete'}
               </button>
-              <button
-                onClick={() => setSelectedTaskId(null)}
-                className="rounded-md bg-primary px-4 py-2 text-xs font-medium text-white shadow-sm transition-colors hover:bg-primary/90"
-              >
-                Save Changes
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSelectedTaskId(null)}
+                  className="rounded-md border border-border/40 bg-white px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

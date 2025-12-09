@@ -1,12 +1,15 @@
 'use client';
+/* eslint-disable @next/next/no-img-element */
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bell, HelpCircle, Menu, Search, ChevronDown } from 'lucide-react';
+import { Bell, HelpCircle, Menu, ChevronDown } from 'lucide-react';
 import { useState } from 'react';
 
 import { dashboardNavigation } from '@/config/navigation';
 import { cn } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
+import { useEffect } from 'react';
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
@@ -19,6 +22,41 @@ type DashboardLayoutProps = {
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [user, setUser] = useState<{
+    id: string;
+    email?: string | null;
+  } | null>(null);
+  const [profile, setProfile] = useState<{
+    full_name?: string | null;
+    avatar_url?: string | null;
+    role?: string | null;
+  } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const supabase = createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (user) {
+          setUser(user);
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single();
+          setProfile(profile);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchUser();
+  }, []);
 
   const toggleMobileNav = () => setMobileNavOpen((open) => !open);
 
@@ -135,14 +173,14 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
           {/* Search */}
           <div className="flex flex-1 items-center px-4">
-            <div className="relative w-full max-w-md">
+            {/* <div className="relative w-full max-w-md">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
                 type="search"
                 placeholder="Search staff, tasks, KPIs..."
                 className="h-9 w-full rounded-lg border border-border/40 bg-white pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
               />
-            </div>
+            </div> */}
           </div>
 
           {/* Right Actions */}
@@ -162,25 +200,38 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             >
               <HelpCircle className="h-5 w-5" />
             </button>
-            <button
-              type="button"
-              className="ml-2 flex items-center gap-3 rounded-md border border-border/40 bg-white py-1.5 pl-2 pr-3 hover:bg-muted/50"
-            >
-              <img
-                src="https://api.dicebear.com/7.x/avataaars/svg?seed=Alex"
-                alt="Alex Johnson"
-                className="h-7 w-7 rounded-full ring-2 ring-gray-50"
-              />
-              <div className="hidden flex-col items-start text-left md:flex">
-                <span className="text-sm font-medium text-gray-700">
-                  Alex Johnson
-                </span>
-                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                  Administrator
-                </span>
+            {isLoading ? (
+              <div className="ml-2 flex items-center gap-3 rounded-md border border-border/40 bg-white py-1.5 pl-2 pr-3">
+                <div className="h-7 w-7 animate-pulse rounded-full bg-slate-200" />
+                <div className="hidden flex-col items-start gap-1 md:flex">
+                  <div className="h-3 w-24 animate-pulse rounded bg-slate-200" />
+                  <div className="h-2 w-16 animate-pulse rounded bg-slate-200" />
+                </div>
               </div>
-              <ChevronDown className="hidden h-3 w-3 text-muted-foreground md:inline" />
-            </button>
+            ) : (
+              <button
+                type="button"
+                className="ml-2 flex items-center gap-3 rounded-md border border-border/40 bg-white py-1.5 pl-2 pr-3 hover:bg-muted/50"
+              >
+                <img
+                  src={
+                    profile?.avatar_url ||
+                    `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile?.full_name || user?.email || 'User'}`
+                  }
+                  alt={profile?.full_name || 'User'}
+                  className="h-7 w-7 rounded-full object-cover ring-2 ring-gray-50"
+                />
+                <div className="hidden flex-col items-start text-left md:flex">
+                  <span className="text-sm font-medium text-gray-700">
+                    {profile?.full_name || user?.email || 'Loading...'}
+                  </span>
+                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    {profile?.role || 'User'}
+                  </span>
+                </div>
+                <ChevronDown className="hidden h-3 w-3 text-muted-foreground md:inline" />
+              </button>
+            )}
           </div>
         </header>
 

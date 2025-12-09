@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable @next/next/no-img-element */
 
 import { useState } from 'react';
 import {
@@ -16,7 +17,7 @@ import {
 const attendanceLogs = [
   {
     id: 1,
-    name: 'Maria Garcia',
+    name: 'Ruth Ihechi',
     title: 'Sales Associate',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Maria',
     checkIn: '08:57',
@@ -31,14 +32,14 @@ const attendanceLogs = [
     verification: 'Verified • Face match 98%',
     fullDetails: {
       status: 'Present • On time',
-      location: '125 Market St, San Francisco • Geofence: HQ',
+      location: 'VGC, Lekki, Lagos, Nigeria • Schoolable HQ',
       verification: 'Face match 98% • GPS accuracy 12m',
       notes: 'No anomalies detected for this check-in.',
     },
   },
   {
     id: 2,
-    name: 'David Kim',
+    name: 'Captain Shaddai',
     title: 'Support Specialist',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=David',
     checkIn: '09:14',
@@ -53,14 +54,14 @@ const attendanceLogs = [
     verification: 'Manager notified',
     fullDetails: {
       status: 'Late • 14 min late',
-      location: '125 Market St, San Francisco • Geofence: HQ',
+      location: 'VGC, Lekki, Lagos, Nigeria • Schoolable HQ',
       verification: 'Face match 95% • GPS accuracy 15m',
       notes: 'Traffic delay reported. Manager notified.',
     },
   },
   {
     id: 3,
-    name: 'Priya Singh',
+    name: 'Deborah Olabode',
     title: 'Ops Coordinator',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Priya',
     checkIn: '—',

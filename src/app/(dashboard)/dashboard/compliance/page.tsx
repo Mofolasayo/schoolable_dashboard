@@ -9,9 +9,11 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  ChevronLeft,
-  ChevronRight,
   Filter,
+  Plus,
+  FileText,
+  Users,
+  Calendar,
 } from 'lucide-react';
 
 // Mock compliance data
@@ -122,8 +124,10 @@ export default function CompliancePage() {
   const [selectedStatus, setSelectedStatus] = useState<string>('All');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const recordsPerPage = 5;
+  const [selectedId, setSelectedId] = useState<number>(
+    complianceItems.length > 0 ? complianceItems[0]!.id : 0
+  );
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const categories = [
     'All',
@@ -148,6 +152,8 @@ export default function CompliancePage() {
     return matchesStatus && matchesCategory && matchesSearch;
   });
 
+  const selectedPolicy = complianceItems.find((item) => item.id === selectedId);
+
   const statusBadgeClass: Record<string, string> = {
     Compliant: 'bg-primary/10 text-primary',
     'At Risk': 'bg-amber-50 text-amber-700',
@@ -161,7 +167,7 @@ export default function CompliancePage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="relative space-y-6">
       {/* Header Section */}
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
@@ -179,6 +185,13 @@ export default function CompliancePage() {
           <button className="flex items-center gap-2 rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
             <Download className="h-3.5 w-3.5" />
             Export
+          </button>
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-primary/90"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New Policy
           </button>
         </div>
       </div>
@@ -271,189 +284,285 @@ export default function CompliancePage() {
         </div>
       </div>
 
-      {/* Compliance Items Table */}
-      <div className="overflow-hidden rounded-xl border border-border/40 bg-white shadow-sm">
-        <div className="border-b border-border/40 p-6">
-          <div>
-            <h2 className="text-sm font-normal text-gray-700">
-              Compliance Policies
-            </h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Track and monitor compliance status across all organizational
-              policies.
-            </p>
-          </div>
-        </div>
-
-        {/* Compliance Items List */}
-        <div className="divide-y divide-border/40">
+      {/* Master-Detail Layout */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        {/* List */}
+        <div className="space-y-3">
           {filteredItems.map((item) => (
             <div
               key={item.id}
-              className="p-6 transition-colors hover:bg-muted/20"
+              onClick={() => setSelectedId(item.id)}
+              className={`cursor-pointer rounded-xl border bg-white p-5 shadow-sm transition hover:shadow-md ${
+                selectedId === item.id
+                  ? 'border-primary ring-1 ring-primary'
+                  : 'border-border/40'
+              }`}
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
-                  <div className="mb-3 flex items-start gap-4">
+                  <div className="mb-2 flex items-start justify-between gap-4">
                     <div className="flex-1">
-                      <div className="mb-2 flex items-start justify-between gap-4">
-                        <div className="flex-1">
-                          <h3 className="mb-1 text-sm font-medium text-gray-800">
-                            {item.title}
-                          </h3>
-                          <p className="line-clamp-2 text-xs text-muted-foreground">
-                            {item.description}
-                          </p>
-                        </div>
-                      </div>
+                      <h3 className="mb-1 text-sm font-medium text-gray-800">
+                        {item.title}
+                      </h3>
+                      <p className="line-clamp-2 text-xs text-muted-foreground">
+                        {item.description}
+                      </p>
+                    </div>
+                  </div>
 
-                      {/* Meta Information */}
-                      <div className="mb-3 flex flex-wrap items-center gap-4 text-xs">
-                        <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground">
-                            Category:
-                          </span>
-                          <span className="font-medium text-gray-700">
-                            {item.category}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground">
-                            Department:
-                          </span>
-                          <span className="font-medium text-gray-700">
-                            {item.department}
-                          </span>
-                        </div>
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-medium ${statusBadgeClass[item.status] ?? 'bg-muted text-gray-700'}`}
-                        >
-                          {item.status}
-                        </span>
-                      </div>
-
-                      {/* Compliance Rate and Staff Info */}
-                      <div className="flex flex-wrap items-center gap-6">
-                        <div>
-                          <div className="mb-1 flex items-center justify-between">
-                            <span className="text-[10px] text-muted-foreground">
-                              Compliance Rate
-                            </span>
-                            <span className="text-xs font-medium text-gray-700">
-                              {item.complianceRate}%
-                            </span>
-                          </div>
-                          <div className="h-1.5 w-32 overflow-hidden rounded-full bg-muted">
-                            <div
-                              className={`h-full rounded-full transition-all ${progressClass(item.status)}`}
-                              style={{ width: `${item.complianceRate}%` }}
-                            />
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-4 text-xs">
-                          <div>
-                            <span className="text-muted-foreground">
-                              Staff:
-                            </span>
-                            <span className="ml-1 font-medium text-gray-700">
-                              {item.staffCount}
-                            </span>
-                          </div>
-                          {item.nonCompliant > 0 && (
-                            <div>
-                              <span className="text-red-600">
-                                Non-compliant:
-                              </span>
-                              <span className="ml-1 font-medium text-red-600">
-                                {item.nonCompliant}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Review Dates */}
-                      <div className="mt-3 flex items-center gap-4 text-xs">
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-muted-foreground">
-                            Last review:
-                          </span>
-                          <span className="text-gray-700">
-                            {new Date(item.lastReview).toLocaleDateString(
-                              'en-US',
-                              {
-                                month: 'short',
-                                day: 'numeric',
-                                year: 'numeric',
-                              }
-                            )}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-muted-foreground">
-                            Next review:
-                          </span>
-                          <span
-                            className={`font-medium ${new Date(item.nextReview) < new Date() ? 'text-red-600' : 'text-gray-700'}`}
-                          >
-                            {new Date(item.nextReview).toLocaleDateString(
-                              'en-US',
-                              {
-                                month: 'short',
-                                day: 'numeric',
-                                year: 'numeric',
-                              }
-                            )}
-                          </span>
-                        </div>
-                      </div>
+                  <div className="flex flex-wrap items-center gap-4 text-xs">
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-medium ${statusBadgeClass[item.status] ?? 'bg-muted text-gray-700'}`}
+                    >
+                      {item.status}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Category:</span>
+                      <span className="font-medium text-gray-700">
+                        {item.category}
+                      </span>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
           ))}
+
+          {filteredItems.length === 0 && (
+            <div className="rounded-xl border border-border/40 bg-white p-10 text-center text-sm text-muted-foreground">
+              No compliance items found matching your filters.
+            </div>
+          )}
         </div>
 
-        {/* Pagination */}
-        {filteredItems.length > 0 && (
-          <div className="flex items-center justify-between border-t border-border/40 px-6 py-4">
-            <p className="text-xs text-muted-foreground">
-              Showing {(currentPage - 1) * recordsPerPage + 1}-
-              {Math.min(currentPage * recordsPerPage, filteredItems.length)} of{' '}
-              {filteredItems.length} items
-            </p>
-            <div className="flex items-center gap-2">
+        {/* Details View */}
+        <div className="space-y-4">
+          {selectedPolicy ? (
+            <div className="sticky top-6 rounded-xl border border-border/40 bg-white p-6 shadow-sm">
+              <div className="mb-6 flex items-start justify-between">
+                <div>
+                  <span
+                    className={`mb-3 inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-medium ${statusBadgeClass[selectedPolicy.status]}`}
+                  >
+                    {selectedPolicy.status}
+                  </span>
+                  <h2 className="text-xl font-medium text-gray-800">
+                    {selectedPolicy.title}
+                  </h2>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button className="p-2 text-muted-foreground transition-colors hover:text-primary">
+                    <Download className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                {/* Stats Cards */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="rounded-lg border border-border/40 bg-gray-50/50 p-3">
+                    <p className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                      Compliance Rate
+                    </p>
+                    <div className="flex items-end gap-2">
+                      <span className="text-2xl font-normal text-gray-800">
+                        {selectedPolicy.complianceRate}%
+                      </span>
+                      <span className="mb-1 text-xs text-muted-foreground">
+                        Target: 95%
+                      </span>
+                    </div>
+                    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={`h-full rounded-full transition-all ${progressClass(selectedPolicy.status)}`}
+                        style={{ width: `${selectedPolicy.complianceRate}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border/40 bg-gray-50/50 p-3">
+                    <p className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                      Staff Adherence
+                    </p>
+                    <div className="flex items-end gap-2">
+                      <span className="text-2xl font-normal text-gray-800">
+                        {selectedPolicy.staffCount -
+                          selectedPolicy.nonCompliant}
+                      </span>
+                      <span className="mb-1 text-xs text-muted-foreground">
+                        / {selectedPolicy.staffCount} Staff
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs text-red-600">
+                      {selectedPolicy.nonCompliant} Non-compliant
+                    </p>
+                  </div>
+                </div>
+
+                {/* Details Grid */}
+                <div className="grid grid-cols-2 gap-4 border-t border-border/40 pt-6 text-xs">
+                  <div>
+                    <p className="mb-1 text-muted-foreground">Department</p>
+                    <p className="flex items-center gap-2 font-medium text-gray-800">
+                      <Users className="h-3.5 w-3.5" />
+                      {selectedPolicy.department}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-muted-foreground">Category</p>
+                    <p className="flex items-center gap-2 font-medium text-gray-800">
+                      <FileText className="h-3.5 w-3.5" />
+                      {selectedPolicy.category}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-muted-foreground">Last Review</p>
+                    <p className="flex items-center gap-2 font-medium text-gray-800">
+                      <Clock className="h-3.5 w-3.5" />
+                      {new Date(selectedPolicy.lastReview).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-muted-foreground">Next Review</p>
+                    <p
+                      className={`flex items-center gap-2 font-medium ${new Date(selectedPolicy.nextReview) < new Date() ? 'text-red-600' : 'text-gray-800'}`}
+                    >
+                      <Calendar className="h-3.5 w-3.5" />
+                      {new Date(selectedPolicy.nextReview).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="border-t border-border/40 pt-6">
+                  <h3 className="mb-2 text-sm font-medium text-gray-800">
+                    Description
+                  </h3>
+                  <p className="text-sm leading-relaxed text-gray-600">
+                    {selectedPolicy.description}
+                  </p>
+                  <p className="mt-4 text-sm leading-relaxed text-gray-600">
+                    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed
+                    do eiusmod tempor incididunt ut labore et dolore magna
+                    aliqua. Ut enim ad minim veniam, quis nostrud exercitation
+                    ullamco laboris nisi ut aliquip ex ea commodo consequat.
+                  </p>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button className="flex-1 rounded-md bg-primary px-4 py-2 text-xs font-medium text-white shadow-sm transition-colors hover:bg-primary/90">
+                    Update Status
+                  </button>
+                  <button className="flex-1 rounded-md border border-border/40 bg-white px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
+                    View Audit Log
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-border/40 bg-white p-10 text-center text-sm text-muted-foreground">
+              Select a policy to view details
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Create Policy Modal */}
+      {isCreateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border/40 p-4">
+              <h3 className="text-lg font-medium text-gray-800">New Policy</h3>
               <button
-                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                disabled={currentPage === 1}
-                className="flex items-center gap-1 rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => setIsCreateModalOpen(false)}
+                className="text-muted-foreground hover:text-foreground"
               >
-                <ChevronLeft className="h-3.5 w-3.5" />
-                Previous
+                <span className="sr-only">Close</span>
+                <XCircle className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-4 p-6">
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-700">
+                  Policy Title
+                </label>
+                <input
+                  type="text"
+                  className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
+                  placeholder="e.g., Remote Work Security Policy"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-gray-700">
+                    Category
+                  </label>
+                  <select className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20">
+                    {categories
+                      .filter((c) => c !== 'All')
+                      .map((c) => (
+                        <option key={c}>{c}</option>
+                      ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-gray-700">
+                    Department
+                  </label>
+                  <select className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20">
+                    <option>IT</option>
+                    <option>HR</option>
+                    <option>Finance</option>
+                    <option>Operations</option>
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-700">
+                  Description
+                </label>
+                <textarea
+                  className="h-24 w-full resize-none rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
+                  placeholder="Brief description of the policy..."
+                ></textarea>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-700">
+                  Upload Document
+                </label>
+                <div className="flex w-full items-center justify-center">
+                  <label className="flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border/40 bg-gray-50 transition-colors hover:bg-gray-100">
+                    <div className="flex flex-col items-center justify-center pb-6 pt-5">
+                      <Download className="mb-3 h-8 w-8 text-muted-foreground" />
+                      <p className="mb-2 text-sm text-muted-foreground">
+                        <span className="font-semibold">Click to upload</span>{' '}
+                        or drag and drop
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        PDF, DOCX (MAX. 10MB)
+                      </p>
+                    </div>
+                    <input type="file" className="hidden" />
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 rounded-b-xl border-t border-border/40 bg-gray-50/50 p-4">
+              <button
+                onClick={() => setIsCreateModalOpen(false)}
+                className="rounded-md border border-border/40 bg-white px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+              >
+                Cancel
               </button>
               <button
-                onClick={() => setCurrentPage(currentPage + 1)}
-                disabled={currentPage * recordsPerPage >= filteredItems.length}
-                className="flex items-center gap-1 rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => setIsCreateModalOpen(false)}
+                className="rounded-md bg-primary px-4 py-2 text-xs font-medium text-white shadow-sm transition-colors hover:bg-primary/90"
               >
-                Next
-                <ChevronRight className="h-3.5 w-3.5" />
+                Create Policy
               </button>
             </div>
           </div>
-        )}
-
-        {filteredItems.length === 0 && (
-          <div className="p-12 text-center">
-            <p className="text-sm text-muted-foreground">
-              No compliance items found matching your filters.
-            </p>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
