@@ -1,7 +1,14 @@
 'use client';
 /* eslint-disable @next/next/no-img-element */
 
-import { Download, Filter, Search, ArrowUpDown } from 'lucide-react';
+import {
+  Download,
+  Filter,
+  Search,
+  ArrowUpDown,
+  Loader2,
+  AlertCircle,
+} from 'lucide-react';
 import {
   PieChart,
   Pie,
@@ -14,6 +21,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import { useState, useEffect } from 'react';
+import { getAllProfiles, type StaffProfile } from '@/lib/api/backend';
 
 const kpiTrendData = [
   {
@@ -123,58 +132,27 @@ const metrics = [
   },
 ];
 
-const staffData = [
-  {
-    id: 1,
-    name: 'Zainab Olagboye',
-    department: 'Growth',
-    role: 'Account Executive',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah',
-    weeklyKpi: 85,
-    taskStatus: 'On Track',
-    taskStatusColor: 'bg-emerald-100 text-emerald-700',
-    attendance: 'Present',
-    attendanceColor: 'bg-emerald-100 text-emerald-700',
-  },
-  {
-    id: 2,
-    name: 'Darlington Obiakonwa',
-    department: 'Support',
-    role: 'Support Lead',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Michael',
-    weeklyKpi: 72,
-    taskStatus: 'At Risk',
-    taskStatusColor: 'bg-orange-100 text-orange-700',
-    attendance: 'Late',
-    attendanceColor: 'bg-orange-100 text-orange-700',
-  },
-  {
-    id: 3,
-    name: 'Deborah Olabode',
-    department: 'Operations',
-    role: 'Ops Manager',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Priya',
-    weeklyKpi: 88,
-    taskStatus: 'On Track',
-    taskStatusColor: 'bg-emerald-100 text-emerald-700',
-    attendance: 'Present',
-    attendanceColor: 'bg-emerald-100 text-emerald-700',
-  },
-  {
-    id: 4,
-    name: 'Mofolasayo Osikoya',
-    department: 'Engineering',
-    role: 'Senior Engineer',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Daniel',
-    weeklyKpi: 65,
-    taskStatus: 'Overdue',
-    taskStatusColor: 'bg-red-100 text-red-700',
-    attendance: 'Absent',
-    attendanceColor: 'bg-red-100 text-red-700',
-  },
-];
-
 export default function DashboardPage() {
+  const [staff, setStaff] = useState<StaffProfile[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchStaff() {
+      try {
+        setIsLoading(true);
+        const profiles = await getAllProfiles();
+        setStaff(profiles);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch staff');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    fetchStaff();
+  }, []);
+
   return (
     <div className="space-y-6">
       {/* Header Section */}
@@ -392,74 +370,100 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/40 bg-white">
-                  {staffData.map((staff) => (
-                    <tr
-                      key={staff.id}
-                      className="transition-colors hover:bg-muted/20"
-                    >
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <img
-                            src={staff.avatar}
-                            alt={staff.name}
-                            className="h-8 w-8 rounded-full ring-2 ring-white"
-                          />
-                          <div>
-                            <p className="text-sm font-medium text-gray-800">
-                              {staff.name}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {staff.department}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <p className="text-sm text-gray-700">{staff.role}</p>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="w-32">
-                          <div className="mb-1 flex items-center justify-between">
-                            <span className="text-xs font-medium text-gray-700">
-                              {staff.weeklyKpi}%
-                            </span>
-                          </div>
-                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                            <div
-                              className="h-full rounded-full bg-primary"
-                              style={{ width: `${staff.weeklyKpi}%` }}
-                            />
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-medium ${staff.taskStatusColor}`}
-                        >
-                          {staff.taskStatus}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-medium ${staff.attendanceColor}`}
-                        >
-                          {staff.attendance}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <button className="text-xs font-medium text-primary hover:text-primary/80 hover:underline">
-                          View
-                        </button>
+                  {isLoading ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-12 text-center">
+                        <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          Loading staff...
+                        </p>
                       </td>
                     </tr>
-                  ))}
+                  ) : error ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-12 text-center">
+                        <AlertCircle className="mx-auto h-8 w-8 text-red-500" />
+                        <p className="mt-2 text-sm text-red-600">{error}</p>
+                      </td>
+                    </tr>
+                  ) : staff.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="px-6 py-12 text-center text-sm text-muted-foreground"
+                      >
+                        No staff members found
+                      </td>
+                    </tr>
+                  ) : (
+                    staff.slice(0, 10).map((member) => (
+                      <tr
+                        key={member.id}
+                        className="transition-colors hover:bg-muted/20"
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <img
+                              src={
+                                member.avatar_url ||
+                                `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.full_name}`
+                              }
+                              alt={member.full_name || 'Staff'}
+                              className="h-8 w-8 rounded-full ring-2 ring-white"
+                            />
+                            <div>
+                              <p className="text-sm font-medium text-gray-800">
+                                {member.full_name || 'Unknown'}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {member.department || 'N/A'}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="text-sm text-gray-700">
+                            {member.job_title || member.role || 'Staff'}
+                          </p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-xs text-muted-foreground">
+                            N/A
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-medium ${
+                              member.status === 'active'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-gray-100 text-gray-700'
+                            }`}
+                          >
+                            {member.status || 'N/A'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-xs text-muted-foreground">
+                            N/A
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <button className="text-xs font-medium text-primary hover:text-primary/80 hover:underline">
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
 
             <div className="flex items-center justify-between border-t border-border/40 px-6 py-4">
               <p className="text-xs text-muted-foreground">
-                Showing 1-4 of {staffData.length} staff
+                Showing{' '}
+                {staff.length > 0 ? '1-' + Math.min(10, staff.length) : '0'} of{' '}
+                {staff.length} staff
               </p>
               <div className="flex items-center gap-2">
                 <button className="rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground disabled:opacity-50">
