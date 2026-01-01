@@ -1,7 +1,8 @@
 'use server';
 
-import { createClient as createServerClient } from '@/lib/supabase/server';
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 
 export interface StaffProfile {
   id: string;
@@ -9,6 +10,7 @@ export interface StaffProfile {
   email: string | null;
   phone: string | null;
   role: string | null;
+  job_title: string | null;
   department: string | null;
   employee_id: string | null;
   status: string | null;
@@ -18,63 +20,90 @@ export interface StaffProfile {
   address: string | null;
   city: string | null;
   state: string | null;
-  avatar_url?: string; // computed
+  avatar_url: string | null;
 }
 
-export async function getStaffProfiles() {
-  let supabase;
+async function getAuthToken(): Promise<string | null> {
+  const cookieStore = await cookies();
+  return cookieStore.get('auth-token')?.value || null;
+}
 
-  // Try to use Service Role Key for Admin Access (Bypass RLS)
-  const serviceRoleKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+export async function getStaffProfiles(): Promise<StaffProfile[]> {
+  const token = await getAuthToken();
 
-  if (serviceRoleKey && supabaseUrl) {
-    console.warn('⚡️ Using Service Role Key for Staff Fetch');
-    supabase = createSupabaseClient(supabaseUrl, serviceRoleKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
-  } else {
-    console.warn('⚠️ using standard user client (RLS applies)');
-    supabase = await createServerClient();
-    // Ensure we have a session
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) {
-      console.warn('No active session found for staff fetch');
-      return [];
-    }
-  }
-
-  // Fetch all profiles from public.profiles
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .neq('role', 'admin') // Exclude admins
-    .neq('role', 'Admin') // Exclude capitalized Admin
-    .order('full_name', { ascending: true });
-
-  if (error) {
-    console.error('Error fetching staff profiles:', error);
+  if (!token) {
+    console.warn('No auth token available for staff fetch');
     return [];
   }
 
-  // Augment with DiceBear avatar if needed
-  return (data || []).map((profile: StaffProfile) => ({
-    ...profile,
-    avatar_url:
-      profile.avatar_url ||
-      `https://api.dicebear.com/7.x/${
-        profile.gender?.toLowerCase() === 'male'
-          ? 'adventurer'
-          : profile.gender?.toLowerCase() === 'female'
-            ? 'adventurer-neutral'
-            : 'bottts'
-      }/svg?seed=${profile.employee_id || profile.email || profile.full_name}`,
-  })) as StaffProfile[];
+  try {
+    const response = await fetch(`${API_URL}/profile/staff`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      console.error('Error fetching staff profiles:', response.status);
+      return [];
+    }
+
+    const data: StaffProfile[] = await response.json();
+
+    // Ensure avatar_url is set (backend should already provide this)
+    return data.map((profile) => ({
+      ...profile,
+      avatar_url: profile.avatar_url || generateAvatarUrl(profile),
+    }));
+  } catch (error) {
+    console.error('Error fetching staff profiles:', error);
+    return [];
+  }
+}
+
+export async function getAllProfiles(): Promise<StaffProfile[]> {
+  const token = await getAuthToken();
+
+  if (!token) {
+    console.warn('No auth token available for profile fetch');
+    return [];
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/profile/all`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      console.error('Error fetching all profiles:', response.status);
+      return [];
+    }
+
+    const data: StaffProfile[] = await response.json();
+    return data.map((profile) => ({
+      ...profile,
+      avatar_url: profile.avatar_url || generateAvatarUrl(profile),
+    }));
+  } catch (error) {
+    console.error('Error fetching all profiles:', error);
+    return [];
+  }
+}
+
+function generateAvatarUrl(profile: StaffProfile): string {
+  const gender = profile.gender?.toLowerCase();
+  let style = 'bottts';
+  if (gender === 'male') style = 'adventurer';
+  else if (gender === 'female') style = 'adventurer-neutral';
+
+  const seed = profile.employee_id || profile.email || profile.full_name || 'User';
+  return `https://api.dicebear.com/7.x/${style}/svg?seed=${seed}`;
 }

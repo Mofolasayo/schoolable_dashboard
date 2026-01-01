@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable @next/next/no-img-element */
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Download,
   Calendar,
@@ -11,79 +11,141 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  MapPin,
+  RefreshCw,
+  Clock,
 } from 'lucide-react';
+import {
+  getTodayAttendance,
+  getAttendanceMetrics,
+  type AttendanceRecord,
+  type AttendanceMetrics,
+} from '@/lib/api/backend';
 
-// Mock data for attendance logs
-const attendanceLogs = [
-  {
-    id: 1,
-    name: 'Ruth Ihechi',
-    title: 'Sales Associate',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Maria',
-    checkIn: '08:57',
-    checkInStatus: '3 min early',
-    status: 'Present',
-    statusColor: 'bg-emerald-100 text-emerald-700',
-    location: 'HQ - Main Office Entrance',
-    address: '125 Market St, San Francisco',
-    verificationPhoto:
-      'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800&h=600&fit=crop',
-    notes: 'Checked in via mobile.',
-    verification: 'Verified • Face match 98%',
-    fullDetails: {
-      status: 'Present • On time',
-      location: 'VGC, Lekki, Lagos, Nigeria • Schoolable HQ',
-      verification: 'Face match 98% • GPS accuracy 12m',
-      notes: 'No anomalies detected for this check-in.',
-    },
-  },
-  {
-    id: 2,
-    name: 'Captain Shaddai',
-    title: 'Support Specialist',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=David',
-    checkIn: '09:14',
-    checkInStatus: '14 min late',
-    status: 'Late',
-    statusColor: 'bg-orange-100 text-orange-700',
-    location: 'HQ - Side Entrance',
-    address: '125 Market St, San Francisco',
-    verificationPhoto:
-      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&h=600&fit=crop',
-    notes: 'Traffic delay reported.',
-    verification: 'Manager notified',
-    fullDetails: {
-      status: 'Late • 14 min late',
-      location: 'VGC, Lekki, Lagos, Nigeria • Schoolable HQ',
-      verification: 'Face match 95% • GPS accuracy 15m',
-      notes: 'Traffic delay reported. Manager notified.',
-    },
-  },
-  {
-    id: 3,
-    name: 'Deborah Olabode',
-    title: 'Ops Coordinator',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Priya',
-    checkIn: '—',
-    checkInStatus: 'No check-in',
-    status: 'Absent',
-    statusColor: 'bg-red-100 text-red-700',
-    location: 'Assigned: HQ - Main Office',
-    address: 'Schedule 09:00-17:00',
-    verificationPhoto: null,
-    notes: 'Escalate if not updated by 10:00.',
-    verification: 'Auto rule: Attendance',
-    fullDetails: null,
-  },
-];
+// Helper to generate avatar URL
+function getAvatarUrl(user?: AttendanceRecord['user']): string {
+  if (!user) return 'https://api.dicebear.com/7.x/bottts/svg?seed=Unknown';
+  if (user.avatar_url) return user.avatar_url;
+
+  const gender = user.department; // Fallback
+  const seed = user.email || user.full_name || 'User';
+  let style = 'bottts';
+  // Could check gender here if available
+  return `https://api.dicebear.com/7.x/${style}/svg?seed=${seed}`;
+}
+
+// Helper to format check-in time and calculate early/late status
+function formatCheckInStatus(checkIn: string | null): {
+  time: string;
+  statusText: string;
+  isEarly: boolean;
+  isLate: boolean;
+} {
+  if (!checkIn) {
+    return { time: '—', statusText: 'No check-in', isEarly: false, isLate: false };
+  }
+
+  const checkInDate = new Date(checkIn);
+  const hours = checkInDate.getHours();
+  const minutes = checkInDate.getMinutes();
+  const time = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+
+  // 9:00 AM is the deadline
+  const deadline = 9 * 60; // 9:00 in minutes
+  const checkInMinutes = hours * 60 + minutes;
+  const diff = deadline - checkInMinutes;
+
+  if (diff > 0) {
+    return { time, statusText: `${diff} min early`, isEarly: true, isLate: false };
+  } else if (diff < 0) {
+    return { time, statusText: `${Math.abs(diff)} min late`, isEarly: false, isLate: true };
+  }
+  return { time, statusText: 'On time', isEarly: true, isLate: false };
+}
+
+// Status color mappings
+function getStatusColor(status: string): string {
+  switch (status.toLowerCase()) {
+    case 'present':
+      return 'bg-emerald-100 text-emerald-700';
+    case 'late':
+      return 'bg-orange-100 text-orange-700';
+    case 'absent':
+      return 'bg-red-100 text-red-700';
+    case 'excused':
+      return 'bg-blue-100 text-blue-700';
+    default:
+      return 'bg-gray-100 text-gray-700';
+  }
+}
+
+function getMarkerColor(status: string): string {
+  switch (status.toLowerCase()) {
+    case 'present':
+      return '#10b981'; // emerald-500
+    case 'late':
+      return '#f59e0b'; // orange-500
+    case 'absent':
+      return '#ef4444'; // red-500
+    default:
+      return '#6b7280'; // gray-500
+  }
+}
 
 export default function AttendanceMonitoringPage() {
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [selectedLog, setSelectedLog] = useState<
-    (typeof attendanceLogs)[0] | null
-  >(null);
-  const totalRecords = 48;
-  const recordsPerPage = 3;
+  const [selectedLog, setSelectedLog] = useState<AttendanceRecord | null>(null);
+  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceRecord[]>([]);
+  const [metrics, setMetrics] = useState<AttendanceMetrics | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const recordsPerPage = 10;
+  const totalRecords = attendanceLogs.length;
+  const totalPages = Math.ceil(totalRecords / recordsPerPage);
+
+  // Paginated records
+  const paginatedLogs = attendanceLogs.slice(
+    (currentPage - 1) * recordsPerPage,
+    currentPage * recordsPerPage
+  );
+
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const [logsData, metricsData] = await Promise.all([
+        getTodayAttendance(),
+        getAttendanceMetrics(),
+      ]);
+      setAttendanceLogs(logsData);
+      setMetrics(metricsData);
+    } catch (err) {
+      console.error('Error fetching attendance data:', err);
+      setError('Failed to load attendance data. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    // Refresh every 2 minutes
+    const interval = setInterval(fetchData, 2 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
+
+  // Build map URL with markers
+  const buildMapUrl = () => {
+    // Base map centered on Lagos, Nigeria (VGC area)
+    const baseUrl = 'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3964.5483!2d3.4712!3d6.4427!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x103bf737b1b1b1b1%3A0x1b1b1b1b1b1b1b1b!2sVictoria%20Garden%20City%20(VGC)%2C%20Lekki%2C%20Lagos%2C%20Nigeria!5e0!3m2!1sen!2sus!4v1234567890123!5m2!1sen!2sus';
+    return baseUrl;
+  };
+
+  // Get locations with coordinates for the map overlay
+  const locationsWithCoords = attendanceLogs.filter(
+    (log) => log.latitude !== null && log.longitude !== null
+  );
 
   return (
     <div className="space-y-6">
@@ -99,6 +161,14 @@ export default function AttendanceMonitoringPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={fetchData}
+            disabled={isLoading}
+            className="flex items-center gap-2 rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
           <button className="flex items-center gap-2 rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
             <Calendar className="h-3.5 w-3.5" />
             Select range
@@ -109,6 +179,13 @@ export default function AttendanceMonitoringPage() {
           </button>
         </div>
       </div>
+
+      {/* Error message */}
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+          <p className="text-sm text-red-600">{error}</p>
+        </div>
+      )}
 
       {/* Check-in Map Section */}
       <div className="rounded-xl border border-border/40 bg-white p-6 shadow-sm">
@@ -122,7 +199,7 @@ export default function AttendanceMonitoringPage() {
           <div className="flex items-center gap-2 rounded-full border border-border/40 bg-white px-3 py-1.5">
             <div className="h-2 w-2 animate-pulse rounded-full bg-emerald-500"></div>
             <span className="text-[10px] font-medium text-muted-foreground">
-              Live • 2 min delay
+              Live • {locationsWithCoords.length} check-ins
             </span>
           </div>
         </div>
@@ -130,7 +207,7 @@ export default function AttendanceMonitoringPage() {
         {/* Map Container */}
         <div className="relative h-[500px] w-full overflow-hidden rounded-lg border border-border/40">
           <iframe
-            src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3964.5483!2d3.4712!3d6.4427!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x103bf737b1b1b1b1%3A0x1b1b1b1b1b1b1b1b!2sVictoria%20Garden%20City%20(VGC)%2C%20Lekki%2C%20Lagos%2C%20Nigeria!5e0!3m2!1sen!2sus!4v1234567890123!5m2!1sen!2sus"
+            src={buildMapUrl()}
             width="100%"
             height="100%"
             style={{ border: 0 }}
@@ -141,11 +218,39 @@ export default function AttendanceMonitoringPage() {
             title="Attendance Check-in Map - VGC, Lekki, Nigeria"
           />
 
+          {/* Map Overlay with Check-in Pins */}
+          {locationsWithCoords.length > 0 && (
+            <div className="absolute left-4 top-4 max-h-[200px] w-64 overflow-y-auto rounded-lg border border-border/40 bg-white/95 p-3 shadow-sm backdrop-blur-sm">
+              <p className="mb-2 text-xs font-medium text-gray-700">Today&apos;s Check-ins</p>
+              <div className="space-y-2">
+                {locationsWithCoords.slice(0, 5).map((log) => (
+                  <div key={log.id} className="flex items-center gap-2">
+                    <div
+                      className="h-2 w-2 rounded-full"
+                      style={{ backgroundColor: getMarkerColor(log.status) }}
+                    />
+                    <span className="truncate text-xs text-gray-600">
+                      {log.user?.full_name || 'Unknown'}
+                    </span>
+                    <span className="ml-auto text-[10px] text-muted-foreground capitalize">
+                      {log.status}
+                    </span>
+                  </div>
+                ))}
+                {locationsWithCoords.length > 5 && (
+                  <p className="text-[10px] text-muted-foreground">
+                    +{locationsWithCoords.length - 5} more
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Map Legend */}
           <div className="absolute bottom-4 left-4 flex items-center gap-4 rounded-lg border border-border/40 bg-white/95 px-4 py-2 shadow-sm backdrop-blur-sm">
             <div className="flex items-center gap-2">
               <div className="h-3 w-3 rounded-full bg-emerald-500"></div>
-              <span className="text-xs text-gray-700">Present</span>
+              <span className="text-xs text-gray-700">Present/Early</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="h-3 w-3 rounded-full bg-orange-500"></div>
@@ -177,10 +282,12 @@ export default function AttendanceMonitoringPage() {
             <span className="text-xs font-medium text-gray-700">Present</span>
           </div>
           <p className="mb-1 text-3xl font-normal tracking-tight text-gray-800">
-            128
+            {isLoading ? '...' : metrics?.present ?? 0}
           </p>
           <p className="text-xs text-muted-foreground">
-            84% of scheduled staff checked in.
+            {metrics?.total_staff
+              ? `${Math.round((metrics.present / metrics.total_staff) * 100)}% of scheduled staff checked in on time.`
+              : 'Loading metrics...'}
           </p>
         </div>
 
@@ -193,26 +300,26 @@ export default function AttendanceMonitoringPage() {
             <span className="text-xs font-medium text-gray-700">Late</span>
           </div>
           <p className="mb-1 text-3xl font-normal tracking-tight text-gray-800">
-            14
+            {isLoading ? '...' : metrics?.late ?? 0}
           </p>
           <p className="text-xs text-muted-foreground">
-            Most late arrivals are from Sales and Support.
+            Staff who checked in after 9:00 AM.
           </p>
         </div>
 
-        {/* Absent */}
+        {/* Absent/Pending */}
         <div className="rounded-xl border border-border/40 bg-white p-5 shadow-sm">
           <div className="mb-3 flex items-center gap-3">
             <div className="rounded-full bg-red-100 p-2">
               <XCircle className="h-5 w-5 text-red-600" />
             </div>
-            <span className="text-xs font-medium text-gray-700">Absent</span>
+            <span className="text-xs font-medium text-gray-700">Pending</span>
           </div>
           <p className="mb-1 text-3xl font-normal tracking-tight text-gray-800">
-            10
+            {isLoading ? '...' : metrics?.pending ?? 0}
           </p>
           <p className="text-xs text-muted-foreground">
-            Review patterns with managers for follow-up.
+            Staff who haven&apos;t checked in yet today.
           </p>
         </div>
       </div>
@@ -220,134 +327,184 @@ export default function AttendanceMonitoringPage() {
       {/* Attendance Logs Section */}
       <div className="overflow-hidden rounded-xl border border-border/40 bg-white shadow-sm">
         <div className="border-b border-border/40 p-6">
-          <div>
-            <h2 className="text-sm font-normal text-gray-700">
-              Attendance logs
-            </h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Detailed check-in records with photo verification.
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-normal text-gray-700">
+                Attendance logs
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Detailed check-in records with photo verification.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">
+                {totalRecords} records today
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Loading state */}
+        {isLoading && (
+          <div className="flex items-center justify-center p-12">
+            <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!isLoading && attendanceLogs.length === 0 && (
+          <div className="flex flex-col items-center justify-center p-12">
+            <MapPin className="mb-3 h-10 w-10 text-gray-300" />
+            <p className="text-sm font-medium text-gray-500">No check-ins yet</p>
+            <p className="text-xs text-muted-foreground">
+              Staff attendance records will appear here.
             </p>
           </div>
-        </div>
+        )}
 
         {/* Attendance Logs Table */}
-        <div className="divide-y divide-border/40">
-          {attendanceLogs.map((log) => (
-            <div
-              key={log.id}
-              className={`p-6 transition-colors hover:bg-muted/20 ${log.verificationPhoto ? 'cursor-pointer' : ''}`}
-              onClick={() => {
-                if (log.verificationPhoto) {
-                  setSelectedLog(log);
-                }
-              }}
-            >
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-                {/* Staff */}
-                <div className="flex items-start gap-3">
-                  <img
-                    src={log.avatar}
-                    alt={log.name}
-                    className="h-10 w-10 rounded-full ring-2 ring-white"
-                  />
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">
-                      {log.name}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{log.title}</p>
+        {!isLoading && attendanceLogs.length > 0 && (
+          <div className="divide-y divide-border/40">
+            {paginatedLogs.map((log) => {
+              const checkInStatus = formatCheckInStatus(log.check_in);
+              return (
+                <div
+                  key={log.id}
+                  className={`p-6 transition-colors hover:bg-muted/20 ${log.photo_url ? 'cursor-pointer' : ''
+                    }`}
+                  onClick={() => {
+                    if (log.photo_url) {
+                      setSelectedLog(log);
+                    }
+                  }}
+                >
+                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+                    {/* Staff */}
+                    <div className="flex items-start gap-3">
+                      <img
+                        src={getAvatarUrl(log.user)}
+                        alt={log.user?.full_name || 'Unknown'}
+                        className="h-10 w-10 rounded-full ring-2 ring-white"
+                      />
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">
+                          {log.user?.full_name || 'Unknown User'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {log.user?.job_title || log.user?.department || '—'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Check-in */}
+                    <div>
+                      <p className="mb-1 text-sm font-medium text-gray-800">
+                        {checkInStatus.time}
+                      </p>
+                      <p
+                        className={`text-xs ${checkInStatus.isEarly
+                            ? 'text-emerald-600'
+                            : checkInStatus.isLate
+                              ? 'text-orange-600'
+                              : 'text-muted-foreground'
+                          }`}
+                      >
+                        {checkInStatus.statusText}
+                      </p>
+                    </div>
+
+                    {/* Status */}
+                    <div>
+                      <span
+                        className={`inline-flex rounded-full px-3 py-1 text-xs font-medium capitalize ${getStatusColor(
+                          log.status
+                        )}`}
+                      >
+                        {log.status}
+                      </span>
+                    </div>
+
+                    {/* Location */}
+                    <div>
+                      <p className="mb-1 text-sm font-medium text-gray-800">
+                        {log.location || 'Unknown Location'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {log.address || '—'}
+                      </p>
+                    </div>
+
+                    {/* Verification */}
+                    <div>
+                      {log.photo_url ? (
+                        <div>
+                          <img
+                            src={log.photo_url}
+                            alt="Verification"
+                            className="mb-2 h-12 w-12 rounded-md border border-border/40 object-cover"
+                          />
+                          <p className="mb-1 text-xs text-gray-700">
+                            {log.note || 'Checked in via mobile.'}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {log.verification_status === 'verified'
+                              ? `Verified • Face match ${log.face_match_score ?? '—'}%`
+                              : log.verification_status === 'flagged'
+                                ? 'Flagged for review'
+                                : 'Pending verification'}
+                          </p>
+                        </div>
+                      ) : (
+                        <div>
+                          <p className="mb-1 text-xs text-muted-foreground">
+                            No photo captured
+                          </p>
+                          <p className="text-xs text-gray-700">
+                            {log.note || '—'}
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-
-                {/* Check-in */}
-                <div>
-                  <p className="mb-1 text-sm font-medium text-gray-800">
-                    {log.checkIn}
-                  </p>
-                  <p
-                    className={`text-xs ${log.checkInStatus.includes('early') ? 'text-emerald-600' : log.checkInStatus.includes('late') ? 'text-orange-600' : 'text-muted-foreground'}`}
-                  >
-                    {log.checkInStatus}
-                  </p>
-                </div>
-
-                {/* Status */}
-                <div>
-                  <span
-                    className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${log.statusColor}`}
-                  >
-                    {log.status}
-                  </span>
-                </div>
-
-                {/* Location */}
-                <div>
-                  <p className="mb-1 text-sm font-medium text-gray-800">
-                    {log.location}
-                  </p>
-                  <p className="text-xs text-muted-foreground">{log.address}</p>
-                </div>
-
-                {/* Verification */}
-                <div>
-                  {log.verificationPhoto ? (
-                    <div>
-                      <img
-                        src={log.verificationPhoto}
-                        alt="Verification"
-                        className="mb-2 h-12 w-12 rounded-md border border-border/40 object-cover"
-                      />
-                      <p className="mb-1 text-xs text-gray-700">{log.notes}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {log.verification}
-                      </p>
-                    </div>
-                  ) : (
-                    <div>
-                      <p className="mb-1 text-xs text-muted-foreground">
-                        Awaiting check-in
-                      </p>
-                      <p className="mb-1 text-xs text-gray-700">{log.notes}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {log.verification}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Pagination */}
-        <div className="flex items-center justify-between border-t border-border/40 px-6 py-4">
-          <p className="text-xs text-muted-foreground">
-            Showing {(currentPage - 1) * recordsPerPage + 1}-
-            {Math.min(currentPage * recordsPerPage, totalRecords)} of{' '}
-            {totalRecords} records
-          </p>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-              disabled={currentPage === 1}
-              className="flex items-center gap-1 rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-              Previous
-            </button>
-            <button
-              onClick={() => setCurrentPage(currentPage + 1)}
-              disabled={currentPage * recordsPerPage >= totalRecords}
-              className="flex items-center gap-1 rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Next
-              <ChevronRight className="h-3.5 w-3.5" />
-            </button>
+        {totalRecords > recordsPerPage && (
+          <div className="flex items-center justify-between border-t border-border/40 px-6 py-4">
+            <p className="text-xs text-muted-foreground">
+              Showing {(currentPage - 1) * recordsPerPage + 1}-
+              {Math.min(currentPage * recordsPerPage, totalRecords)} of{' '}
+              {totalRecords} records
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="flex items-center gap-1 rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+                Previous
+              </button>
+              <button
+                onClick={() => setCurrentPage(currentPage + 1)}
+                disabled={currentPage >= totalPages}
+                className="flex items-center gap-1 rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Photo Verification Modal */}
-      {selectedLog && selectedLog.verificationPhoto && (
+      {selectedLog && selectedLog.photo_url && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <div className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border/40 bg-white shadow-xl">
             {/* Modal Header */}
@@ -357,8 +514,9 @@ export default function AttendanceMonitoringPage() {
                   Photo verification
                 </h3>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {selectedLog.name} • Today at {selectedLog.checkIn} •{' '}
-                  {selectedLog.location}
+                  {selectedLog.user?.full_name || 'Unknown'} • Today at{' '}
+                  {formatCheckInStatus(selectedLog.check_in).time} •{' '}
+                  {selectedLog.location || 'Unknown Location'}
                 </p>
               </div>
               <button
@@ -374,49 +532,56 @@ export default function AttendanceMonitoringPage() {
               {/* Image */}
               <div className="mb-4 overflow-hidden rounded-lg border border-border/40">
                 <img
-                  src={selectedLog.verificationPhoto}
+                  src={selectedLog.photo_url}
                   alt="Verification photo"
                   className="h-auto max-h-[400px] w-full object-contain"
                 />
               </div>
 
               {/* Details */}
-              {selectedLog.fullDetails && (
-                <div className="space-y-3">
-                  <div>
-                    <p className="mb-1 text-xs font-medium text-muted-foreground/70">
-                      Status
-                    </p>
-                    <p className="text-sm text-gray-800">
-                      {selectedLog.fullDetails.status}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="mb-1 text-xs font-medium text-muted-foreground/70">
-                      Location
-                    </p>
-                    <p className="text-sm text-gray-800">
-                      {selectedLog.fullDetails.location}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="mb-1 text-xs font-medium text-muted-foreground/70">
-                      Verification
-                    </p>
-                    <p className="text-sm text-gray-800">
-                      {selectedLog.fullDetails.verification}
-                    </p>
-                  </div>
+              <div className="space-y-3">
+                <div>
+                  <p className="mb-1 text-xs font-medium text-muted-foreground/70">
+                    Status
+                  </p>
+                  <p className="text-sm text-gray-800 capitalize">
+                    {selectedLog.status} •{' '}
+                    {formatCheckInStatus(selectedLog.check_in).statusText}
+                  </p>
+                </div>
+                <div>
+                  <p className="mb-1 text-xs font-medium text-muted-foreground/70">
+                    Location
+                  </p>
+                  <p className="text-sm text-gray-800">
+                    {selectedLog.address || selectedLog.location || 'Unknown'} •{' '}
+                    {selectedLog.location || 'Unknown Office'}
+                  </p>
+                </div>
+                <div>
+                  <p className="mb-1 text-xs font-medium text-muted-foreground/70">
+                    Verification
+                  </p>
+                  <p className="text-sm text-gray-800">
+                    {selectedLog.verification_status === 'verified'
+                      ? `Face match ${selectedLog.face_match_score ?? '—'}%`
+                      : selectedLog.verification_status === 'flagged'
+                        ? 'Flagged for review'
+                        : 'Pending verification'}
+                    {selectedLog.accuracy
+                      ? ` • GPS accuracy ${Math.round(selectedLog.accuracy)}m`
+                      : ''}
+                  </p>
+                </div>
+                {selectedLog.note && (
                   <div>
                     <p className="mb-1 text-xs font-medium text-muted-foreground/70">
                       Notes
                     </p>
-                    <p className="text-sm text-gray-800">
-                      {selectedLog.fullDetails.notes}
-                    </p>
+                    <p className="text-sm text-gray-800">{selectedLog.note}</p>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             {/* Modal Footer */}

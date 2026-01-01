@@ -165,10 +165,10 @@ export default function LoginPage() {
                 Test Credentials:
               </p>
               <p className="text-slate-600">
-                Email: schoolablesuberadmin@gmail.com
+                Email: schoolableadmin@gmail.com
               </p>
               <p className="text-slate-600">
-                Password: schoolablesuperadmin1234
+                Password: schoolableadmin123
               </p>
             </div>
           )}

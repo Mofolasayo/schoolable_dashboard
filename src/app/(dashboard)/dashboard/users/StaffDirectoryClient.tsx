@@ -23,14 +23,33 @@ import {
   MapPin,
   Calendar,
   CreditCard,
+  Award,
+  FileCheck,
+  Clock,
+  XCircle,
+  ExternalLink,
 } from 'lucide-react';
 import { format } from 'date-fns';
+
+// Certificate type 
+interface Certificate {
+  id: number;
+  name: string;
+  quarter: string;
+  year: number;
+  status: 'pending' | 'approved' | 'rejected';
+  certificateUrl?: string;
+  createdAt: string;
+  approvedAt?: string;
+}
 
 export default function StaffDirectoryClient() {
   const [staff, setStaff] = useState<StaffProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStaff, setSelectedStaff] = useState<StaffProfile | null>(null);
+  const [certificates, setCertificates] = useState<Certificate[]>([]);
+  const [loadingCerts, setLoadingCerts] = useState(false);
 
   useEffect(() => {
     getStaffProfiles().then((data) => {
@@ -38,6 +57,25 @@ export default function StaffDirectoryClient() {
       setIsLoading(false);
     });
   }, []);
+
+  // Fetch certificates when a staff member is selected
+  useEffect(() => {
+    if (selectedStaff?.id) {
+      setLoadingCerts(true);
+      // Fetch from API
+      fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'https://schoolable-backend.onrender.com'}/api/performance/training-records/employee/${selectedStaff.id}`)
+        .then(res => res.json())
+        .then(data => {
+          setCertificates(Array.isArray(data) ? data : []);
+        })
+        .catch(() => {
+          setCertificates([]);
+        })
+        .finally(() => setLoadingCerts(false));
+    } else {
+      setCertificates([]);
+    }
+  }, [selectedStaff?.id]);
 
   if (isLoading) return <Loading />;
 
@@ -55,6 +93,32 @@ export default function StaffDirectoryClient() {
       return format(new Date(dateStr), 'MMM d, yyyy');
     } catch {
       return dateStr;
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'approved':
+        return <FileCheck className="h-4 w-4 text-emerald-600" />;
+      case 'pending':
+        return <Clock className="h-4 w-4 text-amber-600" />;
+      case 'rejected':
+        return <XCircle className="h-4 w-4 text-rose-600" />;
+      default:
+        return <Award className="h-4 w-4 text-slate-400" />;
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'approved':
+        return <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">Approved</Badge>;
+      case 'pending':
+        return <Badge className="bg-amber-50 text-amber-700 border-amber-200">Pending</Badge>;
+      case 'rejected':
+        return <Badge className="bg-rose-50 text-rose-700 border-rose-200">Rejected</Badge>;
+      default:
+        return <Badge variant="secondary">{status}</Badge>;
     }
   };
 
@@ -281,6 +345,64 @@ export default function StaffDirectoryClient() {
                     </div>
                   </div>
                 </section>
+
+                <div className="mx-2 h-px bg-slate-100" />
+
+                {/* Certificates Section */}
+                <section>
+                  <h3 className="mb-4 pl-1 text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                    <Award className="h-4 w-4" />
+                    Training Certificates
+                  </h3>
+
+                  {loadingCerts ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+                    </div>
+                  ) : certificates.length === 0 ? (
+                    <div className="rounded-lg bg-slate-50 border border-slate-100 p-6 text-center">
+                      <Award className="h-8 w-8 mx-auto mb-2 text-slate-300" />
+                      <p className="text-sm text-slate-500">No certificates uploaded yet</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {certificates.map((cert) => (
+                        <div
+                          key={cert.id}
+                          className="flex items-center gap-3 p-3 rounded-lg border border-slate-100 bg-white hover:bg-slate-50 transition-colors"
+                        >
+                          <div className="flex-shrink-0">
+                            {getStatusIcon(cert.status)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-slate-700 truncate">
+                                {cert.name}
+                              </span>
+                              {cert.certificateUrl && (
+                                <a
+                                  href={cert.certificateUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-indigo-600 hover:text-indigo-700"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                </a>
+                              )}
+                            </div>
+                            <div className="text-xs text-slate-400">
+                              {cert.quarter} {cert.year} • {formatDate(cert.createdAt)}
+                            </div>
+                          </div>
+                          <div className="flex-shrink-0">
+                            {getStatusBadge(cert.status)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
               </div>
 
               <div className="border-t border-border/40 bg-slate-50/30 p-6">
@@ -295,3 +417,4 @@ export default function StaffDirectoryClient() {
     </div>
   );
 }
+

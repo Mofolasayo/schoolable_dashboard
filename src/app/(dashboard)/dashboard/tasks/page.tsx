@@ -1,7 +1,6 @@
 'use client';
 /* eslint-disable @next/next/no-img-element */
 
-import { createClient } from '@/lib/supabase/client';
 import {
   getTasks,
   createTask,
@@ -13,7 +12,7 @@ import {
 import { getStaffProfiles, StaffProfile } from '@/app/actions/staff';
 import { toast } from 'sonner';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Plus,
   Search,
@@ -33,7 +32,10 @@ import {
   Image as ImageIcon,
   Trash2,
   Pencil,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
+import { useWebSocket, useWebSocketSubscription } from '@/lib/websocket';
 
 type TaskStatus = 'Pending' | 'In Progress' | 'Completed' | 'Overdue';
 type TaskPriority = 'Low' | 'Medium' | 'High';
@@ -125,23 +127,44 @@ export default function TaskManagementPage() {
 
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
+  // Load user profile from cookie (set by login action)
   useEffect(() => {
     const loadUserProfile = async () => {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user) {
-        const { data } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-        setUserProfile(data);
+      // Get user info from cookie
+      const userInfoCookie = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('user_info='));
+      if (userInfoCookie) {
+        try {
+          const userInfo = JSON.parse(decodeURIComponent(userInfoCookie.split('=')[1]));
+          setUserProfile(userInfo);
+        } catch (e) {
+          console.error('Failed to parse user_info cookie:', e);
+        }
       }
     };
     loadUserProfile();
   }, []);
+
+  // WebSocket connection status
+  const { isConnected } = useWebSocket();
+
+  // Refresh tasks function
+  const refreshTasks = useCallback(async () => {
+    try {
+      const tasks = await getTasks();
+      setTaskList(tasks as unknown as Task[]);
+    } catch {
+      console.error('Failed to refresh tasks');
+    }
+  }, []);
+
+  // Subscribe to task updates via WebSocket
+  useWebSocketSubscription('notification', (data) => {
+    console.log('📥 Task notification received:', data);
+    // Refresh tasks when we get any notification
+    refreshTasks();
+  }, [refreshTasks]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -160,37 +183,16 @@ export default function TaskManagementPage() {
       }
     };
     loadData();
-    // Realtime subscription
-    const supabase = createClient();
-    const channel = supabase
-      .channel('tasks_dashboard_changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'tasks' },
-        () => loadData()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'task_comments' },
-        () => loadData()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'task_subtasks' },
-        () => loadData()
-      )
-      .subscribe();
 
-    // Polling fallback (every 2 minutes)
+    // Reduced polling since WebSocket handles real-time (fallback every 2 minutes)
     const intervalId = setInterval(() => {
-      loadData();
+      refreshTasks();
     }, 120000);
 
     return () => {
-      supabase.removeChannel(channel);
       clearInterval(intervalId);
     };
-  }, []);
+  }, [refreshTasks]);
 
   // Calculate metrics
   const totalTasks = taskList.length;
@@ -370,6 +372,21 @@ export default function TaskManagementPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Real-time connection indicator */}
+          <div
+            className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium ${isConnected
+                ? 'bg-emerald-50 text-emerald-700'
+                : 'bg-gray-100 text-gray-500'
+              }`}
+            title={isConnected ? 'Real-time updates active' : 'Polling for updates'}
+          >
+            {isConnected ? (
+              <Wifi className="h-3 w-3" />
+            ) : (
+              <WifiOff className="h-3 w-3" />
+            )}
+            {isConnected ? 'Live' : 'Polling'}
+          </div>
           <button
             onClick={() => setShowCreateModal(true)}
             className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-primary/90"
@@ -432,11 +449,10 @@ export default function TaskManagementPage() {
                   <button
                     key={status}
                     onClick={() => setSelectedStatus(status)}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                      selectedStatus === status
-                        ? 'bg-primary text-white'
-                        : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }`}
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${selectedStatus === status
+                      ? 'bg-primary text-white'
+                      : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
                   >
                     {status}
                   </button>
@@ -454,11 +470,10 @@ export default function TaskManagementPage() {
                   <button
                     key={priority}
                     onClick={() => setSelectedPriority(priority)}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                      selectedPriority === priority
-                        ? 'bg-primary text-white'
-                        : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }`}
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${selectedPriority === priority
+                      ? 'bg-primary text-white'
+                      : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
                   >
                     {priority}
                   </button>
@@ -1084,48 +1099,50 @@ export default function TaskManagementPage() {
 
                   setIsSubmitting(true);
                   try {
-                    // Upload attachments first
-                    const uploadedAttachments = [];
-                    const supabase = createClient();
+                    // Upload attachments to Cloudinary first
+                    const uploadedAttachments: { name: string; size: number; type: string; url: string; path: string }[] = [];
 
                     if (newTask.attachments.length > 0) {
+                      toast.info('Uploading attachments...');
+
                       for (const file of newTask.attachments) {
-                        // Check if it's a File object (it should be)
-                        if (file instanceof File) {
-                          const fileExt = file.name.split('.').pop();
-                          const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
-                          const filePath = `${fileName}`;
+                        try {
+                          // Create FormData and upload via API route
+                          const formData = new FormData();
+                          formData.append('file', file);
 
-                          const { error: uploadError } = await supabase.storage
-                            .from('task-attachments')
-                            .upload(filePath, file);
-
-                          if (uploadError) {
-                            console.error('Upload error:', uploadError);
-                            toast.error(`Failed to upload ${file.name}`);
-                            continue;
-                          }
-
-                          const {
-                            data: { publicUrl },
-                          } = supabase.storage
-                            .from('task-attachments')
-                            .getPublicUrl(filePath);
-
-                          uploadedAttachments.push({
-                            name: file.name,
-                            size: file.size,
-                            type: file.type,
-                            url: publicUrl,
-                            path: filePath,
+                          const uploadRes = await fetch('/api/upload', {
+                            method: 'POST',
+                            body: formData,
                           });
+
+                          if (uploadRes.ok) {
+                            const result = await uploadRes.json();
+                            uploadedAttachments.push({
+                              name: file.name,
+                              size: file.size,
+                              type: file.type,
+                              url: result.url,
+                              path: result.publicId || '',
+                            });
+                          } else {
+                            console.error('Failed to upload file:', file.name);
+                          }
+                        } catch (uploadErr) {
+                          console.error('Error uploading file:', file.name, uploadErr);
                         }
+                      }
+
+                      if (uploadedAttachments.length > 0) {
+                        toast.success(`Uploaded ${uploadedAttachments.length} file(s)`);
+                      } else if (newTask.attachments.length > 0) {
+                        toast.warning('Could not upload attachments. Creating task without them.');
                       }
                     }
 
                     const taskPayload: CreateTaskData = {
                       ...newTask,
-                      attachments: uploadedAttachments, // Replace File objects with metadata
+                      attachments: uploadedAttachments,
                     };
 
                     const res = await createTask(taskPayload);

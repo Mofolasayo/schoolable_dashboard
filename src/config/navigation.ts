@@ -8,6 +8,7 @@ import {
   Shield,
   FileText,
   Settings,
+  Briefcase,
 } from 'lucide-react';
 
 /**
@@ -81,6 +82,13 @@ export const dashboardNavigation = [
     icon: FileText,
     description: 'Generate and view performance reports',
     section: 'main',
+  },
+  {
+    title: 'HR & Policy',
+    href: '/dashboard/hr-policy',
+    icon: Briefcase,
+    description: 'Manage probation, confirmation, structure, and promotions',
+    section: 'system',
   },
   {
     title: 'Settings',

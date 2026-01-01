@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"path": "../schoolable_backend"
+		},
+		{
+			"path": "../schoolable"
+		},
+		{
+			"path": "."
+		},
+		{
+			"path": "../schoolable_team_lead"
+		},
+		{
+			"path": "../Downloads/policy"
+		}
+	],
+	"settings": {}
+}
