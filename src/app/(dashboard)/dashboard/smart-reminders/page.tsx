@@ -32,7 +32,6 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 
-// Types
 interface SmartReminder {
     id: string;
     name: string;
@@ -52,99 +51,91 @@ interface SmartReminder {
     createdAt: string;
 }
 
-// Mock data
-const generateMockReminders = (): SmartReminder[] => [
-    {
-        id: '1',
-        name: 'Morning Check-in Reminder',
-        description: 'Remind staff to check in if they haven\'t by 9:30 AM',
-        type: 'check_in',
-        schedule: {
-            time: '09:30',
-            days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-            timezone: 'Africa/Lagos',
-        },
-        targetAudience: 'pending_only',
-        message: '⏰ Don\'t forget to check in! You haven\'t checked in yet today.',
-        channels: ['push'],
-        isActive: true,
-        lastTriggered: '2026-01-05T09:30:00',
-        triggerCount: 156,
-        createdAt: '2025-06-01',
-    },
-    {
-        id: '2',
-        name: 'Task Due Reminder',
-        description: 'Remind staff of tasks due within 24 hours',
-        type: 'task_due',
-        schedule: {
-            time: '08:00',
-            days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-            timezone: 'Africa/Lagos',
-        },
-        targetAudience: 'pending_only',
-        message: '📋 You have tasks due soon! Check your task list.',
-        channels: ['push', 'email'],
-        isActive: true,
-        lastTriggered: '2026-01-05T08:00:00',
-        triggerCount: 89,
-        createdAt: '2025-06-15',
-    },
-    {
-        id: '3',
-        name: 'Weekly Report Reminder',
-        description: 'Remind about weekly report submission on Fridays',
-        type: 'report_submission',
-        schedule: {
-            time: '14:00',
-            days: ['Friday'],
-            timezone: 'Africa/Lagos',
-        },
-        targetAudience: 'pending_only',
-        message: '📄 Weekly report deadline approaching! Submit your report before end of day.',
-        channels: ['push', 'email'],
-        isActive: true,
-        lastTriggered: '2026-01-03T14:00:00',
-        triggerCount: 42,
-        createdAt: '2025-07-01',
-    },
-    {
-        id: '4',
-        name: 'Peer Feedback Reminder',
-        description: 'Remind staff to complete peer feedback ratings',
-        type: 'peer_feedback',
-        schedule: {
-            time: '15:00',
-            days: ['Thursday'],
-            timezone: 'Africa/Lagos',
-        },
-        targetAudience: 'pending_only',
-        message: '⭐ Time to rate your colleagues! Complete your peer feedback to avoid Aura penalties.',
-        channels: ['push'],
-        isActive: true,
-        lastTriggered: '2026-01-02T15:00:00',
-        triggerCount: 28,
-        createdAt: '2025-09-01',
-    },
-    {
-        id: '5',
-        name: 'Aura Penalty Warning',
-        description: 'Warn staff about impending Aura score deductions',
-        type: 'aura_penalty',
-        schedule: {
-            time: '10:00',
-            days: ['Friday'],
-            timezone: 'Africa/Lagos',
-        },
-        targetAudience: 'pending_only',
-        message: '⚠️ Warning: Your Aura score may be deducted if you don\'t complete pending actions.',
-        channels: ['push', 'email'],
-        isActive: false,
-        lastTriggered: '2025-12-27T10:00:00',
-        triggerCount: 12,
-        createdAt: '2025-10-01',
-    },
-];
+// API Configuration
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+
+async function getAuthHeaders() {
+    const token = localStorage.getItem('token');
+    return {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+    };
+}
+
+async function fetchRemindersAPI(): Promise<{ reminders: SmartReminder[]; summary: { total: number; active: number } }> {
+    const res = await fetch(`${API_BASE}/api/admin/smart-reminders`, {
+        headers: await getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to fetch reminders');
+    return res.json();
+}
+
+async function createReminderAPI(data: {
+    name: string;
+    description: string;
+    type: string;
+    scheduleTime: string;
+    scheduleDays: string[];
+    timezone: string;
+    targetAudience: string;
+    message: string;
+    channels: string[];
+}): Promise<{ success: boolean; reminder: SmartReminder }> {
+    const res = await fetch(`${API_BASE}/api/admin/smart-reminders`, {
+        method: 'POST',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Failed to create reminder');
+    return res.json();
+}
+
+async function updateReminderAPI(id: string, data: {
+    name: string;
+    description: string;
+    type: string;
+    scheduleTime: string;
+    scheduleDays: string[];
+    timezone: string;
+    targetAudience: string;
+    message: string;
+    channels: string[];
+}): Promise<{ success: boolean; reminder: SmartReminder }> {
+    const res = await fetch(`${API_BASE}/api/admin/smart-reminders/${id}`, {
+        method: 'PUT',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Failed to update reminder');
+    return res.json();
+}
+
+async function toggleReminderAPI(id: string): Promise<{ success: boolean; reminder: SmartReminder }> {
+    const res = await fetch(`${API_BASE}/api/admin/smart-reminders/${id}/toggle`, {
+        method: 'POST',
+        headers: await getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to toggle reminder');
+    return res.json();
+}
+
+async function deleteReminderAPI(id: string): Promise<{ success: boolean }> {
+    const res = await fetch(`${API_BASE}/api/admin/smart-reminders/${id}`, {
+        method: 'DELETE',
+        headers: await getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to delete reminder');
+    return res.json();
+}
+
+async function triggerReminderAPI(id: string): Promise<{ success: boolean }> {
+    const res = await fetch(`${API_BASE}/api/admin/smart-reminders/${id}/trigger`, {
+        method: 'POST',
+        headers: await getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to trigger reminder');
+    return res.json();
+}
 
 const REMINDER_TYPE_LABELS: Record<SmartReminder['type'], { label: string; color: string; icon: React.ReactNode }> = {
     check_in: { label: 'Check-in', color: '#10b981', icon: <Clock className="h-4 w-4" /> },
@@ -180,9 +171,15 @@ export default function SmartRemindersPage() {
 
     const fetchReminders = async () => {
         setIsLoading(true);
-        await new Promise(resolve => setTimeout(resolve, 500));
-        setReminders(generateMockReminders());
-        setIsLoading(false);
+        try {
+            const data = await fetchRemindersAPI();
+            setReminders(data.reminders || []);
+        } catch (err) {
+            console.error('Error fetching reminders:', err);
+            toast.error('Failed to load reminders');
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const openDialog = (reminder?: SmartReminder) => {
@@ -222,61 +219,68 @@ export default function SmartRemindersPage() {
             return;
         }
 
-        if (editingReminder) {
-            setReminders(reminders.map(r =>
-                r.id === editingReminder.id
-                    ? {
-                        ...r,
-                        name: formData.name,
-                        description: formData.description,
-                        type: formData.type,
-                        schedule: { time: formData.time, days: formData.days, timezone: 'Africa/Lagos' },
-                        message: formData.message,
-                        channels: formData.channels,
-                        targetAudience: formData.targetAudience,
-                        isActive: formData.isActive,
-                    }
-                    : r
-            ));
-            toast.success('Reminder updated successfully');
-        } else {
-            const newReminder: SmartReminder = {
-                id: Date.now().toString(),
+        try {
+            const payload = {
                 name: formData.name,
                 description: formData.description,
                 type: formData.type,
-                schedule: { time: formData.time, days: formData.days, timezone: 'Africa/Lagos' },
+                scheduleTime: formData.time,
+                scheduleDays: formData.days,
+                timezone: 'Africa/Lagos',
+                targetAudience: formData.targetAudience,
                 message: formData.message,
                 channels: formData.channels,
-                targetAudience: formData.targetAudience,
-                isActive: formData.isActive,
-                triggerCount: 0,
-                createdAt: new Date().toISOString().split('T')[0] as string,
             };
-            setReminders([...reminders, newReminder]);
-            toast.success('New reminder created successfully');
-        }
 
-        setIsDialogOpen(false);
+            if (editingReminder) {
+                await updateReminderAPI(editingReminder.id, payload);
+                toast.success('Reminder updated successfully');
+            } else {
+                await createReminderAPI(payload);
+                toast.success('New reminder created successfully');
+            }
+
+            setIsDialogOpen(false);
+            await fetchReminders(); // Refresh list
+        } catch (err) {
+            console.error('Error saving reminder:', err);
+            toast.error('Failed to save reminder');
+        }
     };
 
-    const handleDelete = (reminderId: string) => {
+    const handleDelete = async (reminderId: string) => {
         if (confirm('Are you sure you want to delete this reminder?')) {
-            setReminders(reminders.filter(r => r.id !== reminderId));
-            toast.success('Reminder deleted successfully');
+            try {
+                await deleteReminderAPI(reminderId);
+                toast.success('Reminder deleted successfully');
+                await fetchReminders();
+            } catch (err) {
+                console.error('Error deleting reminder:', err);
+                toast.error('Failed to delete reminder');
+            }
         }
     };
 
-    const toggleReminder = (reminderId: string) => {
-        setReminders(reminders.map(r =>
-            r.id === reminderId ? { ...r, isActive: !r.isActive } : r
-        ));
-        const reminder = reminders.find(r => r.id === reminderId);
-        toast.success(`Reminder ${reminder?.isActive ? 'paused' : 'activated'}`);
+    const toggleReminder = async (reminderId: string) => {
+        try {
+            const result = await toggleReminderAPI(reminderId);
+            toast.success(result.reminder?.isActive ? 'Reminder activated' : 'Reminder paused');
+            await fetchReminders();
+        } catch (err) {
+            console.error('Error toggling reminder:', err);
+            toast.error('Failed to toggle reminder');
+        }
     };
 
-    const triggerNow = (reminder: SmartReminder) => {
-        toast.success(`Reminder "${reminder.name}" triggered manually`);
+    const triggerNow = async (reminder: SmartReminder) => {
+        try {
+            await triggerReminderAPI(reminder.id);
+            toast.success(`Reminder "${reminder.name}" triggered manually`);
+            await fetchReminders();
+        } catch (err) {
+            console.error('Error triggering reminder:', err);
+            toast.error('Failed to trigger reminder');
+        }
     };
 
     const activeReminders = reminders.filter(r => r.isActive).length;

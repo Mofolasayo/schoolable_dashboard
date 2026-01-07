@@ -14,10 +14,6 @@ import {
     Calendar,
     RefreshCw,
     Timer,
-    Car,
-    CloudRain,
-    Heart,
-    Briefcase,
     HelpCircle,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -62,62 +58,36 @@ interface RepeatOffender {
     lastLateDate: string;
 }
 
-// Mock data
-const generateMockLateData = () => {
-    const reasons = [
-        { category: 'traffic', label: 'Traffic', icon: Car },
-        { category: 'health', label: 'Health Issue', icon: Heart },
-        { category: 'weather', label: 'Weather', icon: CloudRain },
-        { category: 'family', label: 'Family Emergency', icon: Users },
-        { category: 'work', label: 'Work Related', icon: Briefcase },
-        { category: 'other', label: 'Other', icon: HelpCircle },
-    ];
+interface AnalyticsSummary {
+    totalLateCheckIns: number;
+    averageMinutesLate: number;
+    onTimeRate: number;
+    repeatOffenderCount: number;
+    totalAttendanceRecords: number;
+}
 
-    const names = ['John Doe', 'Jane Smith', 'Mike Wilson', 'Sarah Johnson', 'David Brown', 'Emily Davis'];
-    const departments = ['Engineering', 'Design', 'Product', 'Marketing', 'Operations'];
+// API Configuration
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
-    const lateCheckIns: LateCheckIn[] = [];
-    for (let i = 0; i < 30; i++) {
-        const reason = reasons[Math.floor(Math.random() * reasons.length)]!;
-        const date = new Date();
-        date.setDate(date.getDate() - Math.floor(Math.random() * 30));
-        const excuses = ['Heavy traffic on the highway', 'Doctor appointment ran late', 'Weather delayed transport', 'Child was sick', 'Client meeting overran', 'Personal issues'];
+async function getAuthHeaders() {
+    const token = localStorage.getItem('token');
+    return {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+    };
+}
 
-        lateCheckIns.push({
-            id: `late-${i}`,
-            userId: `user-${i % 6}`,
-            userName: names[i % 6]!,
-            userAvatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${names[i % 6]}`,
-            department: departments[Math.floor(Math.random() * departments.length)]!,
-            checkInTime: `09:${String(Math.floor(Math.random() * 50) + 10).padStart(2, '0')}`,
-            minutesLate: Math.floor(Math.random() * 60) + 5,
-            reason: `${reason.label} - ${excuses[Math.floor(Math.random() * 6)]}`,
-            reasonCategory: reason.category,
-            date: date.toISOString().split('T')[0] as string,
-        });
-    }
+async function fetchLateAnalytics(startDate?: string, endDate?: string) {
+    const params = new URLSearchParams();
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
 
-    return lateCheckIns;
-};
-
-const generateRepeatOffenders = (): RepeatOffender[] => {
-    return [
-        { id: '1', name: 'John Doe', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=John', department: 'Engineering', lateCount: 8, averageMinutesLate: 23, trend: 'worsening', lastLateDate: '2026-01-03' },
-        { id: '2', name: 'Sarah Johnson', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Sarah', department: 'Design', lateCount: 6, averageMinutesLate: 18, trend: 'stable', lastLateDate: '2026-01-04' },
-        { id: '3', name: 'Mike Wilson', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Mike', department: 'Product', lateCount: 5, averageMinutesLate: 12, trend: 'improving', lastLateDate: '2026-01-02' },
-        { id: '4', name: 'Emily Davis', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Emily', department: 'Marketing', lateCount: 4, averageMinutesLate: 25, trend: 'worsening', lastLateDate: '2026-01-05' },
-    ];
-};
-
-const generateTrendData = () => {
-    const months = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
-    return months.map((name, index) => ({
-        name,
-        lateCount: Math.floor(Math.random() * 20) + 5 - index * 2,
-        avgMinutes: Math.floor(Math.random() * 30) + 10,
-        onTimeRate: 75 + index * 5 + Math.floor(Math.random() * 5),
-    }));
-};
+    const res = await fetch(`${API_BASE}/api/admin/late-analytics?${params}`, {
+        headers: await getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to fetch late analytics');
+    return res.json();
+}
 
 const REASON_COLORS: Record<string, string> = {
     traffic: '#f59e0b',
@@ -132,52 +102,86 @@ export default function LateAnalyticsPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [lateCheckIns, setLateCheckIns] = useState<LateCheckIn[]>([]);
     const [repeatOffenders, setRepeatOffenders] = useState<RepeatOffender[]>([]);
-    const [trendData, setTrendData] = useState<{ name: string; lateCount: number; avgMinutes: number; onTimeRate: number }[]>([]);
+    const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
+    const [dailyBreakdown, setDailyBreakdown] = useState<{ name: string; late: number; onTime: number }[]>([]);
+    const [reasonBreakdown, setReasonBreakdown] = useState<Record<string, number>>({});
+    const [departmentBreakdown, setDepartmentBreakdown] = useState<Record<string, number>>({});
     const [timeRange, setTimeRange] = useState<'week' | 'month' | 'quarter'>('month');
     const [activeTab, setActiveTab] = useState('overview');
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         fetchData();
     }, [timeRange]);
 
-    const fetchData = async () => {
-        setIsLoading(true);
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 500));
-        setLateCheckIns(generateMockLateData());
-        setRepeatOffenders(generateRepeatOffenders());
-        setTrendData(generateTrendData());
-        setIsLoading(false);
+    const getDateRange = () => {
+        const end = new Date();
+        const start = new Date();
+
+        switch (timeRange) {
+            case 'week':
+                start.setDate(end.getDate() - 7);
+                break;
+            case 'month':
+                start.setDate(end.getDate() - 30);
+                break;
+            case 'quarter':
+                start.setDate(end.getDate() - 90);
+                break;
+        }
+
+        return {
+            startDate: start.toISOString().split('T')[0],
+            endDate: end.toISOString().split('T')[0],
+        };
     };
 
-    // Calculate stats
-    const totalLateThisMonth = lateCheckIns.length;
-    const avgMinutesLate = Math.round(lateCheckIns.reduce((sum, l) => sum + l.minutesLate, 0) / lateCheckIns.length);
-    const uniqueLateEmployees = new Set(lateCheckIns.map(l => l.userId)).size;
-    const onTimeRate = 85; // Mock
+    const fetchData = async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            const { startDate, endDate } = getDateRange();
+            const data = await fetchLateAnalytics(startDate, endDate);
 
-    // Reason distribution
-    const reasonDistribution = Object.entries(
-        lateCheckIns.reduce((acc, l) => {
-            acc[l.reasonCategory] = (acc[l.reasonCategory] || 0) + 1;
-            return acc;
-        }, {} as Record<string, number>)
-    ).map(([category, count]) => ({
+            setLateCheckIns(data.lateCheckIns || []);
+            setRepeatOffenders(data.repeatOffenders || []);
+            setSummary(data.summary || null);
+            setReasonBreakdown(data.reasonBreakdown || {});
+            setDepartmentBreakdown(data.departmentBreakdown || {});
+
+            // Transform daily breakdown for chart
+            const daily = (data.dailyBreakdown || []).map((d: { date: string; late: number; onTime: number }) => ({
+                name: new Date(d.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+                late: d.late,
+                onTime: d.onTime,
+            }));
+            setDailyBreakdown(daily);
+        } catch (err) {
+            console.error('Error fetching late analytics:', err);
+            setError('Failed to load late analytics data');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // Calculate stats from summary or fallback
+    const totalLateThisMonth = summary?.totalLateCheckIns || lateCheckIns.length;
+    const avgMinutesLate = summary?.averageMinutesLate ||
+        (lateCheckIns.length > 0 ? Math.round(lateCheckIns.reduce((sum, l) => sum + l.minutesLate, 0) / lateCheckIns.length) : 0);
+    const uniqueLateEmployees = new Set(lateCheckIns.map(l => l.userId)).size;
+    const onTimeRate = summary?.onTimeRate || 0;
+
+    // Reason distribution for pie chart
+    const reasonDistribution = Object.entries(reasonBreakdown).map(([category, count]) => ({
         name: category.charAt(0).toUpperCase() + category.slice(1),
         value: count,
         color: REASON_COLORS[category] || '#6b7280',
     }));
 
-    // Department distribution
-    const departmentDistribution = Object.entries(
-        lateCheckIns.reduce((acc, l) => {
-            acc[l.department] = (acc[l.department] || 0) + 1;
-            return acc;
-        }, {} as Record<string, number>)
-    ).map(([dept, count]) => ({
-        name: dept,
-        count,
-    })).sort((a, b) => b.count - a.count);
+    // Department distribution for bar chart
+    const departmentDistribution = Object.entries(departmentBreakdown)
+        .map(([dept, count]) => ({ name: dept, count }))
+        .sort((a, b) => b.count - a.count);
 
     if (isLoading) {
         return (
@@ -307,7 +311,7 @@ export default function LateAnalyticsPage() {
                             <CardContent>
                                 <div className="h-[250px]">
                                     <ResponsiveContainer width="100%" height="100%">
-                                        <AreaChart data={trendData}>
+                                        <AreaChart data={dailyBreakdown}>
                                             <defs>
                                                 <linearGradient id="colorLate" x1="0" y1="0" x2="0" y2="1">
                                                     <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
@@ -348,7 +352,7 @@ export default function LateAnalyticsPage() {
                             <CardContent>
                                 <div className="h-[250px]">
                                     <ResponsiveContainer width="100%" height="100%">
-                                        <AreaChart data={trendData}>
+                                        <AreaChart data={dailyBreakdown}>
                                             <defs>
                                                 <linearGradient id="colorOnTime" x1="0" y1="0" x2="0" y2="1">
                                                     <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
