@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +19,7 @@ import {
     MessageSquare,
     Lightbulb,
     Shield,
+    RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -36,6 +37,66 @@ interface RatingValue {
     criterionId: string;
     score: number; // 1-5
     comment: string;
+}
+
+interface Employee {
+    id: string;
+    name: string;
+    department: string;
+    jobTitle: string;
+    isTeamLead: boolean;
+    avatar: string;
+    avatarUrl?: string;
+}
+
+// API Configuration
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+
+async function getAuthHeaders() {
+    const token = localStorage.getItem('token');
+    return {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+    };
+}
+
+async function fetchEmployee(employeeId: string): Promise<Employee> {
+    const res = await fetch(`${API_BASE}/api/admin/staff/${employeeId}`, {
+        headers: await getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to fetch employee');
+    const data = await res.json();
+
+    // Map API response to our Employee interface
+    return {
+        id: data.id || employeeId,
+        name: data.fullName || data.full_name || 'Unknown',
+        department: data.department || 'N/A',
+        jobTitle: data.jobTitle || data.job_title || 'N/A',
+        isTeamLead: data.isTeamLead || data.is_team_lead || false,
+        avatar: (data.fullName || data.full_name || 'U')
+            .split(' ')
+            .map((n: string) => n[0])
+            .join('')
+            .substring(0, 2)
+            .toUpperCase(),
+        avatarUrl: data.avatarUrl || data.avatar_url,
+    };
+}
+
+async function submitAssessment(employeeId: string, data: {
+    ratings: Record<string, RatingValue>;
+    overallComments: string;
+    developmentRecommendations: string;
+    isDraft: boolean;
+}): Promise<{ success: boolean }> {
+    const res = await fetch(`${API_BASE}/api/admin/assessments/${employeeId}`, {
+        method: 'POST',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Failed to submit assessment');
+    return res.json();
 }
 
 // Rating criteria definitions
@@ -121,26 +182,22 @@ const ratingLabels: Record<number, { label: string; color: string }> = {
     5: { label: 'Outstanding', color: 'text-emerald-600' },
 };
 
-// Mock employee data
-const employee = {
-    id: '1',
-    name: 'Adebayo Tunde',
-    department: 'Engineering',
-    jobTitle: 'Senior Developer',
-    isTeamLead: true,
-    avatar: 'AT',
-};
-
 // Pillar display info
 const pillarInfo: Record<string, { title: string; color: string; bgColor: string }> = {
     behavioral: { title: 'Behavioral Competence (25%)', color: 'text-blue-700', bgColor: 'bg-blue-50' },
-    culture_fit: { title: 'Culture Fit (25%)', color: 'text-purple-700', bgColor: 'bg-purple-50' },
-    growth: { title: 'Growth & Learning (25%)', color: 'text-emerald-700', bgColor: 'bg-emerald-50' },
-    leadership: { title: 'Collaboration/Leadership (25%)', color: 'text-amber-700', bgColor: 'bg-amber-50' },
+    culture_fit: { title: 'Culture Fit (20%)', color: 'text-purple-700', bgColor: 'bg-purple-50' },
+    growth: { title: 'Growth & Learning (20%)', color: 'text-emerald-700', bgColor: 'bg-emerald-50' },
+    leadership: { title: 'Collaboration/Leadership', color: 'text-amber-700', bgColor: 'bg-amber-50' },
 };
 
 export default function ManagerAssessmentPage() {
     const router = useRouter();
+    const params = useParams();
+    const employeeId = params.employeeId as string;
+
+    const [employee, setEmployee] = useState<Employee | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
     const [ratings, setRatings] = useState<Record<string, RatingValue>>(
         ratingCriteria.reduce((acc, criterion) => ({
@@ -154,9 +211,27 @@ export default function ManagerAssessmentPage() {
     const [isSaving, setIsSaving] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    useEffect(() => {
+        const loadEmployee = async () => {
+            if (!employeeId) return;
+            setIsLoading(true);
+            setError(null);
+            try {
+                const data = await fetchEmployee(employeeId);
+                setEmployee(data);
+            } catch (err) {
+                console.error('Error fetching employee:', err);
+                setError('Failed to load employee data');
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        loadEmployee();
+    }, [employeeId]);
+
     // Filter criteria based on whether employee is team lead
     const applicableCriteria = ratingCriteria.filter(
-        criterion => !criterion.forTeamLeadsOnly || employee.isTeamLead
+        criterion => !criterion.forTeamLeadsOnly || employee?.isTeamLead
     );
 
     // Group criteria by pillar
@@ -204,10 +279,15 @@ export default function ManagerAssessmentPage() {
 
     // Save as draft
     const handleSaveDraft = async () => {
+        if (!employeeId) return;
         setIsSaving(true);
         try {
-            // TODO: API call to save draft
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await submitAssessment(employeeId, {
+                ratings,
+                overallComments,
+                developmentRecommendations,
+                isDraft: true,
+            });
             toast.success('Assessment saved as draft');
         } catch {
             toast.error('Failed to save draft');
@@ -218,10 +298,15 @@ export default function ManagerAssessmentPage() {
 
     // Submit assessment
     const handleSubmit = async () => {
+        if (!employeeId) return;
         setIsSubmitting(true);
         try {
-            // TODO: API call to submit assessment
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await submitAssessment(employeeId, {
+                ratings,
+                overallComments,
+                developmentRecommendations,
+                isDraft: false,
+            });
             toast.success('Assessment submitted successfully');
             router.push('/dashboard/performance');
         } catch {
@@ -230,6 +315,35 @@ export default function ManagerAssessmentPage() {
             setIsSubmitting(false);
         }
     };
+
+    // Loading state
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <RefreshCw className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        );
+    }
+
+    // Error state
+    if (error || !employee) {
+        return (
+            <div className="p-6 max-w-4xl mx-auto">
+                <div className="flex items-center gap-4 mb-6">
+                    <Button variant="ghost" size="icon" onClick={() => router.back()}>
+                        <ArrowLeft className="h-5 w-5" />
+                    </Button>
+                    <h1 className="text-2xl font-bold text-gray-900">Manager Assessment</h1>
+                </div>
+                <Card className="bg-red-50 border-red-200">
+                    <CardContent className="pt-6">
+                        <p className="text-red-700">{error || 'Employee not found'}</p>
+                        <Button className="mt-4" onClick={() => router.back()}>Go Back</Button>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
 
     return (
         <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -248,9 +362,17 @@ export default function ManagerAssessmentPage() {
             <Card>
                 <CardContent className="pt-6">
                     <div className="flex items-center gap-4">
-                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-xl font-bold">
-                            {employee.avatar}
-                        </div>
+                        {employee.avatarUrl ? (
+                            <img
+                                src={employee.avatarUrl}
+                                alt={employee.name}
+                                className="w-16 h-16 rounded-full object-cover"
+                            />
+                        ) : (
+                            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-xl font-bold">
+                                {employee.avatar}
+                            </div>
+                        )}
                         <div>
                             <div className="flex items-center gap-2">
                                 <h2 className="text-xl font-semibold">{employee.name}</h2>
