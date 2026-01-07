@@ -293,7 +293,16 @@ export async function getStaffWithPerformance(): Promise<StaffWithPerformance[]>
             avatar_url: string | null;
             gender: string | null;
             employee_id: string | null;
-        }>).filter(p => p.role !== 'SUPER_ADMIN' && p.job_title !== 'Super Admin');
+        }>).filter(p => {
+            const role = p.role?.toLowerCase() || '';
+            const name = p.full_name?.toLowerCase() || '';
+            const title = p.job_title?.toLowerCase() || '';
+            // Filter out admin users
+            return !role.includes('admin') &&
+                !name.includes('admin') &&
+                !title.includes('administrator') &&
+                role !== 'super_admin';
+        });
 
         // Fetch tasks for task counts
         const tasksResponse = await fetch(`${API_URL}/tasks`, {
@@ -379,8 +388,19 @@ export async function getDepartmentReports(): Promise<DepartmentReport[]> {
             }),
         ]);
 
-        const profiles = profilesRes.ok ? await profilesRes.json() : [];
+        const rawProfiles = profilesRes.ok ? await profilesRes.json() : [];
         const tasks = tasksRes.ok ? await tasksRes.json() : [];
+
+        // Filter out admin users from profiles
+        const profiles = rawProfiles.filter((p: { role?: string; full_name?: string; job_title?: string }) => {
+            const role = p.role?.toLowerCase() || '';
+            const name = p.full_name?.toLowerCase() || '';
+            const title = p.job_title?.toLowerCase() || '';
+            return !role.includes('admin') &&
+                !name.includes('admin') &&
+                !title.includes('administrator') &&
+                role !== 'super_admin';
+        });
 
         // Group by department
         const departments = new Map<string, {

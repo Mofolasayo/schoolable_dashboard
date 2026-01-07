@@ -37,6 +37,7 @@ import {
 import {
   getAuraDashboard,
   getAllProfiles,
+  getStaffProfiles,
   deleteProfile,
   type AuraResponse,
   type StaffProfile,
@@ -188,11 +189,18 @@ export default function PerformancePage() {
       setError(null);
 
       try {
-        // Fetch all profiles for team list
-        const profiles = await getAllProfiles();
+        // Fetch staff profiles (excludes admin users)
+        const profiles = await getStaffProfiles();
+
+        // Filter out any admin users that might slip through
+        const staffOnly = profiles.filter(
+          (p) => p.role?.toLowerCase() !== 'super_admin' &&
+            p.role?.toLowerCase() !== 'admin' &&
+            !p.full_name?.toLowerCase().includes('admin')
+        );
 
         // Fetch Aura scores for all employees in parallel
-        const auraPromises = profiles.map(async (profile) => {
+        const auraPromises = staffOnly.map(async (profile) => {
           try {
             const aura = await getAuraDashboard(profile.id);
             return {

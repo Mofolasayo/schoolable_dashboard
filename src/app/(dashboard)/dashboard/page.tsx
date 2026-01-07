@@ -30,6 +30,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   getDashboardStats,
   getStaffWithPerformance,
@@ -41,6 +42,7 @@ type TimeRange = 'today' | 'week' | 'month' | 'custom';
 type KpiFilter = 'overall' | 'completion' | 'attendance' | 'compliance' | 'feedback';
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [staff, setStaff] = useState<StaffWithPerformance[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -571,7 +573,10 @@ export default function DashboardPage() {
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <button className="text-xs font-medium text-primary hover:text-primary/80 hover:underline">
+                          <button
+                            onClick={() => router.push(`/dashboard/performance/assess/${member.id}`)}
+                            className="text-xs font-medium text-primary hover:text-primary/80 hover:underline"
+                          >
                             View
                           </button>
                         </td>
