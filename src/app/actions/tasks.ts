@@ -8,7 +8,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 
 async function getAuthToken(): Promise<string | null> {
   const cookieStore = await cookies();
-  const token = cookieStore.get('auth-token')?.value || null;
+  const token = cookieStore.get('admin-auth-token')?.value || null;
   console.log('🔐 Tasks getAuthToken:', token ? `Found (${token.substring(0, 20)}...)` : 'NOT FOUND');
   console.log('   All cookies:', cookieStore.getAll().map(c => c.name).join(', '));
   return token;

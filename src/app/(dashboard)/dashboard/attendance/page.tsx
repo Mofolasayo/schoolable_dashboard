@@ -20,17 +20,15 @@ import {
   getAttendanceMetrics,
   type AttendanceRecord,
   type AttendanceMetrics,
-} from '@/lib/api/backend';
+} from '@/app/actions/attendance';
 
 // Helper to generate avatar URL
 function getAvatarUrl(user?: AttendanceRecord['user']): string {
   if (!user) return 'https://api.dicebear.com/7.x/bottts/svg?seed=Unknown';
   if (user.avatar_url) return user.avatar_url;
 
-  const gender = user.department; // Fallback
   const seed = user.email || user.full_name || 'User';
-  let style = 'bottts';
-  // Could check gender here if available
+  const style = 'bottts';
   return `https://api.dicebear.com/7.x/${style}/svg?seed=${seed}`;
 }
 
@@ -76,19 +74,6 @@ function getStatusColor(status: string): string {
       return 'bg-blue-100 text-blue-700';
     default:
       return 'bg-gray-100 text-gray-700';
-  }
-}
-
-function getMarkerColor(status: string): string {
-  switch (status.toLowerCase()) {
-    case 'present':
-      return '#10b981'; // emerald-500
-    case 'late':
-      return '#f59e0b'; // orange-500
-    case 'absent':
-      return '#ef4444'; // red-500
-    default:
-      return '#6b7280'; // gray-500
   }
 }
 
@@ -218,29 +203,78 @@ export default function AttendanceMonitoringPage() {
             title="Attendance Check-in Map - VGC, Lekki, Nigeria"
           />
 
-          {/* Map Overlay with Check-in Pins */}
+          {/* Map Overlay with Check-in Pins - Enhanced with photos and status colors */}
           {locationsWithCoords.length > 0 && (
-            <div className="absolute left-4 top-4 max-h-[200px] w-64 overflow-y-auto rounded-lg border border-border/40 bg-white/95 p-3 shadow-sm backdrop-blur-sm">
-              <p className="mb-2 text-xs font-medium text-gray-700">Today&apos;s Check-ins</p>
+            <div className="absolute left-4 top-4 max-h-[280px] w-72 overflow-y-auto rounded-lg border border-border/40 bg-white/95 p-4 shadow-lg backdrop-blur-sm">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold text-gray-700">Today&apos;s Check-ins</p>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                  {locationsWithCoords.length} staff
+                </span>
+              </div>
               <div className="space-y-2">
-                {locationsWithCoords.slice(0, 5).map((log) => (
-                  <div key={log.id} className="flex items-center gap-2">
+                {locationsWithCoords.slice(0, 8).map((log) => {
+                  const checkInStatus = formatCheckInStatus(log.check_in);
+                  const isLate = log.status.toLowerCase() === 'late' || checkInStatus.isLate;
+                  const isPresent = log.status.toLowerCase() === 'present' && !isLate;
+
+                  return (
                     <div
-                      className="h-2 w-2 rounded-full"
-                      style={{ backgroundColor: getMarkerColor(log.status) }}
-                    />
-                    <span className="truncate text-xs text-gray-600">
-                      {log.user?.full_name || 'Unknown'}
-                    </span>
-                    <span className="ml-auto text-[10px] text-muted-foreground capitalize">
-                      {log.status}
-                    </span>
+                      key={log.id}
+                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/30 transition-colors cursor-pointer"
+                      onClick={() => setSelectedLog(log)}
+                    >
+                      {/* Avatar with status border */}
+                      <div className={`relative flex-shrink-0`}>
+                        <img
+                          src={log.photo_url || getAvatarUrl(log.user)}
+                          alt={log.user?.full_name || 'Staff'}
+                          className={`h-9 w-9 rounded-full object-cover ring-2 ${isLate
+                            ? 'ring-orange-500'
+                            : isPresent
+                              ? 'ring-emerald-500'
+                              : 'ring-gray-300'
+                            }`}
+                        />
+                        {/* Status indicator dot */}
+                        <div
+                          className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white ${isLate
+                            ? 'bg-orange-500'
+                            : isPresent
+                              ? 'bg-emerald-500'
+                              : 'bg-gray-400'
+                            }`}
+                        />
+                      </div>
+
+                      {/* Name and time */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-800 truncate">
+                          {log.user?.full_name || 'Unknown'}
+                        </p>
+                        <p className={`text-[10px] ${isLate ? 'text-orange-600' : 'text-muted-foreground'}`}>
+                          {checkInStatus.time} • {checkInStatus.statusText}
+                        </p>
+                      </div>
+
+                      {/* Status badge */}
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold uppercase ${isLate
+                        ? 'bg-orange-100 text-orange-700'
+                        : isPresent
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-gray-100 text-gray-600'
+                        }`}>
+                        {isLate ? 'Late' : log.status}
+                      </span>
+                    </div>
+                  );
+                })}
+                {locationsWithCoords.length > 8 && (
+                  <div className="text-center py-2 border-t border-border/40 mt-2">
+                    <p className="text-[10px] text-muted-foreground">
+                      +{locationsWithCoords.length - 8} more check-ins
+                    </p>
                   </div>
-                ))}
-                {locationsWithCoords.length > 5 && (
-                  <p className="text-[10px] text-muted-foreground">
-                    +{locationsWithCoords.length - 5} more
-                  </p>
                 )}
               </div>
             </div>
@@ -404,10 +438,10 @@ export default function AttendanceMonitoringPage() {
                       </p>
                       <p
                         className={`text-xs ${checkInStatus.isEarly
-                            ? 'text-emerald-600'
-                            : checkInStatus.isLate
-                              ? 'text-orange-600'
-                              : 'text-muted-foreground'
+                          ? 'text-emerald-600'
+                          : checkInStatus.isLate
+                            ? 'text-orange-600'
+                            : 'text-muted-foreground'
                           }`}
                       >
                         {checkInStatus.statusText}

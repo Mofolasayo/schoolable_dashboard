@@ -53,30 +53,30 @@ export default function AnnouncementsPage() {
       status: (a.status as AnnouncementItem['status']) || 'Published',
       publishedAt: a.scheduled_at
         ? new Date(a.scheduled_at).toLocaleDateString() +
-          ' • ' +
-          new Date(a.scheduled_at).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          })
+        ' • ' +
+        new Date(a.scheduled_at).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        })
         : new Date(
-            a.created_at ?? new Date().toISOString()
-          ).toLocaleDateString() +
-          ' • ' +
-          new Date(a.created_at ?? new Date().toISOString()).toLocaleTimeString(
-            [],
-            { hour: '2-digit', minute: '2-digit' }
-          ),
+          a.created_at ?? new Date().toISOString()
+        ).toLocaleDateString() +
+        ' • ' +
+        new Date(a.created_at ?? new Date().toISOString()).toLocaleTimeString(
+          [],
+          { hour: '2-digit', minute: '2-digit' }
+        ),
       audience: a.audience ?? 'All Staff',
       author: 'Admin',
       tags: [],
-      pinned: a.pinned,
+      pinned: a.pinned ?? undefined,
       originalContent: a.content ?? '',
       scheduledAt: a.scheduled_at
         ? new Date(a.scheduled_at).toISOString().substring(0, 16)
         : '',
     }));
     setItems(mapped);
-    if (mapped.length > 0 && !selectedId) setSelectedId(mapped[0].id);
+    if (mapped.length > 0 && !selectedId && mapped[0]) setSelectedId(mapped[0].id);
     setIsFetching(false);
   }, [selectedId]);
 
@@ -282,11 +282,10 @@ export default function AnnouncementsPage() {
               <button
                 key={status}
                 onClick={() => setStatusFilter(status)}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                  statusFilter === status
-                    ? 'bg-primary text-white'
-                    : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${statusFilter === status
+                  ? 'bg-primary text-white'
+                  : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
               >
                 {status}
               </button>
@@ -303,11 +302,10 @@ export default function AnnouncementsPage() {
             <div
               key={item.id}
               onClick={() => setSelectedId(item.id)}
-              className={`cursor-pointer rounded-xl border bg-white p-5 shadow-sm transition hover:shadow-md ${
-                selectedId === item.id
-                  ? 'border-primary ring-1 ring-primary'
-                  : 'border-border/40'
-              }`}
+              className={`cursor-pointer rounded-xl border bg-white p-5 shadow-sm transition hover:shadow-md ${selectedId === item.id
+                ? 'border-primary ring-1 ring-primary'
+                : 'border-border/40'
+                }`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-2">
@@ -539,8 +537,8 @@ export default function AnnouncementsPage() {
                     : isScheduled
                       ? 'Schedule'
                       : editingId &&
-                          items.find((i) => i.id === editingId)?.status !==
-                            'Draft'
+                        items.find((i) => i.id === editingId)?.status !==
+                        'Draft'
                         ? 'Update'
                         : 'Publish'}
                 </button>

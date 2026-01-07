@@ -12,8 +12,22 @@ type DashboardGroupLayoutProps = {
   children: ReactNode;
 };
 
-export default function DashboardGroupLayout({
+import { cookies } from 'next/headers';
+
+export default async function DashboardGroupLayout({
   children,
 }: DashboardGroupLayoutProps) {
-  return <DashboardLayout>{children}</DashboardLayout>;
+  const cookieStore = await cookies();
+  const userInfoCookie = cookieStore.get('admin-user-info');
+  let user = null;
+
+  if (userInfoCookie) {
+    try {
+      user = JSON.parse(decodeURIComponent(userInfoCookie.value));
+    } catch (e) {
+      console.error('Failed to parse user cookie', e);
+    }
+  }
+
+  return <DashboardLayout user={user}>{children}</DashboardLayout>;
 }

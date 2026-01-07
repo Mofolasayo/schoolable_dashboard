@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { logout } from '@/app/login/actions';
 import {
@@ -24,7 +24,7 @@ import { getProfile, updateProfile, uploadAvatar, StaffProfile } from '@/lib/api
 
 type SettingSection = 'personal_info' | 'organization' | 'notifications' | 'security' | 'appearance';
 
-export default function SettingsPage() {
+function SettingsContent() {
   const searchParams = useSearchParams();
   const [activeSection, setActiveSection] = useState<SettingSection>('organization');
   const [isLoading, setIsLoading] = useState(false);
@@ -106,7 +106,7 @@ export default function SettingsPage() {
 
     setIsUploading(true);
     try {
-      const result = await uploadAvatar(file);
+      await uploadAvatar(file);
       // Refresh profile to get new avatar URL
       const updated = await getProfile();
       setProfile(updated as unknown as StaffProfile);
@@ -694,5 +694,17 @@ export default function SettingsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-[calc(100vh-120px)] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    }>
+      <SettingsContent />
+    </Suspense>
   );
 }

@@ -29,7 +29,7 @@ export type AnnouncementRecord = {
 
 async function getAuthToken(): Promise<string | null> {
   const cookieStore = await cookies();
-  return cookieStore.get('auth-token')?.value || null;
+  return cookieStore.get('admin-auth-token')?.value || null;
 }
 
 export async function createAnnouncement(data: CreateAnnouncementData) {

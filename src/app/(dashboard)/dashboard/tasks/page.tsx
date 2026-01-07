@@ -9,6 +9,7 @@ import {
   createTaskComment,
   updateTaskDescription,
 } from '@/app/actions/tasks';
+import { CreateTaskData } from '@/app/types/tasks';
 import { getStaffProfiles, StaffProfile } from '@/app/actions/staff';
 import { toast } from 'sonner';
 
@@ -98,6 +99,7 @@ type NewTaskForm = {
   organization: string;
   priority: TaskPriority;
   dueDate: string;
+  dueTime: string;
   tags: string[];
   subtasks: { title: string }[];
   attachments: File[];
@@ -106,6 +108,8 @@ type NewTaskForm = {
 type UserProfile = {
   id: string;
   full_name?: string | null;
+  email?: string | null;
+  employee_id?: string | null;
   role?: string | null;
   department?: string | null;
   avatar_url?: string | null;
@@ -136,8 +140,11 @@ export default function TaskManagementPage() {
         .find(row => row.startsWith('user_info='));
       if (userInfoCookie) {
         try {
-          const userInfo = JSON.parse(decodeURIComponent(userInfoCookie.split('=')[1]));
-          setUserProfile(userInfo);
+          const cookieValue = userInfoCookie.split('=')[1];
+          if (cookieValue) {
+            const userInfo = JSON.parse(decodeURIComponent(cookieValue));
+            setUserProfile(userInfo);
+          }
         } catch (e) {
           console.error('Failed to parse user_info cookie:', e);
         }
@@ -247,6 +254,7 @@ export default function TaskManagementPage() {
     organization: '',
     priority: 'Medium',
     dueDate: '',
+    dueTime: '',
     tags: [],
     subtasks: [],
     attachments: [],
@@ -276,12 +284,29 @@ export default function TaskManagementPage() {
   ];
 
   // Filtered assignees based on selected department in modal
-  const validAssignees = staffList.filter(
+  const baseAssignees = staffList.filter(
     (s) =>
       !newTask.organization ||
       newTask.organization === '' ||
       s.department === newTask.organization
   );
+
+  // Include the current admin user (self-assignment option)
+  const validAssignees = userProfile
+    ? [
+      // Add admin as first option with a special marker
+      {
+        id: userProfile.id,
+        full_name: userProfile.full_name || 'Admin',
+        department: userProfile.department || 'Admin',
+        email: userProfile.email,
+        role: userProfile.role,
+        isSelf: true, // Marker to identify self
+      } as StaffProfile & { isSelf?: boolean },
+      // Filter out the admin from staff list if they appear there
+      ...baseAssignees.filter((s) => s.id !== userProfile.id),
+    ]
+    : baseAssignees;
 
   const availableTags = [
     'Documentation',
@@ -375,8 +400,8 @@ export default function TaskManagementPage() {
           {/* Real-time connection indicator */}
           <div
             className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium ${isConnected
-                ? 'bg-emerald-50 text-emerald-700'
-                : 'bg-gray-100 text-gray-500'
+              ? 'bg-emerald-50 text-emerald-700'
+              : 'bg-gray-100 text-gray-500'
               }`}
             title={isConnected ? 'Real-time updates active' : 'Polling for updates'}
           >
@@ -711,6 +736,7 @@ export default function TaskManagementPage() {
                     organization: '',
                     priority: 'Medium',
                     dueDate: '',
+                    dueTime: '',
                     tags: [],
                     subtasks: [],
                     attachments: [],
@@ -794,7 +820,7 @@ export default function TaskManagementPage() {
                     <option value="">Select assignee</option>
                     {validAssignees.map((staff) => (
                       <option key={staff.id} value={staff.id}>
-                        {staff.full_name} ({staff.department})
+                        {staff.full_name} {staff.id === userProfile?.id ? '(Me)' : `(${staff.department})`}
                       </option>
                     ))}
                   </select>
@@ -832,6 +858,20 @@ export default function TaskManagementPage() {
                     value={newTask.dueDate}
                     onChange={(e) =>
                       setNewTask({ ...newTask, dueDate: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-gray-700">
+                    Due Time
+                  </label>
+                  <input
+                    type="time"
+                    value={newTask.dueTime}
+                    onChange={(e) =>
+                      setNewTask({ ...newTask, dueTime: e.target.value })
                     }
                     className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
                   />
@@ -1080,6 +1120,7 @@ export default function TaskManagementPage() {
                     organization: '',
                     priority: 'Medium',
                     dueDate: '',
+                    dueTime: '',
                     tags: [],
                     subtasks: [],
                     attachments: [],
@@ -1158,6 +1199,7 @@ export default function TaskManagementPage() {
                         organization: '',
                         priority: 'Medium',
                         dueDate: '',
+                        dueTime: '',
                         tags: [],
                         subtasks: [],
                         attachments: [],

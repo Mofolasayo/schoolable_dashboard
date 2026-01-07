@@ -171,7 +171,7 @@ export default function StaffDirectoryClient() {
                   <TableCell className="py-4 pl-6">
                     <div className="flex items-center gap-4">
                       <Avatar className="h-10 w-10 border border-slate-100/50">
-                        <AvatarImage src={person.avatar_url} />
+                        <AvatarImage src={person.avatar_url ?? undefined} />
                         <AvatarFallback className="bg-slate-100 text-slate-500">
                           {person.full_name?.substring(0, 2).toUpperCase()}
                         </AvatarFallback>
@@ -224,7 +224,7 @@ export default function StaffDirectoryClient() {
               {/* Header */}
               <div className="flex flex-col items-center border-b border-border/40 bg-slate-50/50 p-8 text-center">
                 <Avatar className="mb-4 h-24 w-24 border-4 border-white shadow-sm">
-                  <AvatarImage src={selectedStaff.avatar_url} />
+                  <AvatarImage src={selectedStaff.avatar_url ?? undefined} />
                   <AvatarFallback className="bg-slate-100 text-xl text-slate-500">
                     {selectedStaff.full_name?.substring(0, 2).toUpperCase()}
                   </AvatarFallback>

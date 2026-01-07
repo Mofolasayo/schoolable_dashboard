@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,12 +16,9 @@ import {
     Target,
     Users,
     TrendingUp,
-    Award,
     MessageSquare,
     Lightbulb,
     Shield,
-    Clock,
-    CheckCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -144,7 +141,6 @@ const pillarInfo: Record<string, { title: string; color: string; bgColor: string
 
 export default function ManagerAssessmentPage() {
     const router = useRouter();
-    const params = useParams();
 
     const [ratings, setRatings] = useState<Record<string, RatingValue>>(
         ratingCriteria.reduce((acc, criterion) => ({
@@ -168,24 +164,30 @@ export default function ManagerAssessmentPage() {
         if (!acc[criterion.pillar]) {
             acc[criterion.pillar] = [];
         }
-        acc[criterion.pillar].push(criterion);
+        acc[criterion.pillar]!.push(criterion);
         return acc;
     }, {} as Record<string, RatingCriterion[]>);
 
     // Update rating
     const handleRatingChange = (criterionId: string, score: number) => {
-        setRatings(prev => ({
-            ...prev,
-            [criterionId]: { ...prev[criterionId], score }
-        }));
+        setRatings(prev => {
+            const existing = prev[criterionId];
+            return {
+                ...prev,
+                [criterionId]: { criterionId, score, comment: existing?.comment ?? '' }
+            };
+        });
     };
 
     // Update comment
     const handleCommentChange = (criterionId: string, comment: string) => {
-        setRatings(prev => ({
-            ...prev,
-            [criterionId]: { ...prev[criterionId], comment }
-        }));
+        setRatings(prev => {
+            const existing = prev[criterionId];
+            return {
+                ...prev,
+                [criterionId]: { criterionId, comment, score: existing?.score ?? 3 }
+            };
+        });
     };
 
     // Calculate pillar average
@@ -194,7 +196,7 @@ export default function ManagerAssessmentPage() {
         if (pillarCriteria.length === 0) return 0;
 
         const sum = pillarCriteria.reduce((total, criterion) => {
-            return total + ratings[criterion.id].score;
+            return total + (ratings[criterion.id]?.score ?? 3);
         }, 0);
 
         return (sum / pillarCriteria.length) * 20; // Convert 1-5 to 0-100
@@ -207,7 +209,7 @@ export default function ManagerAssessmentPage() {
             // TODO: API call to save draft
             await new Promise(resolve => setTimeout(resolve, 1000));
             toast.success('Assessment saved as draft');
-        } catch (error) {
+        } catch {
             toast.error('Failed to save draft');
         } finally {
             setIsSaving(false);
@@ -222,7 +224,7 @@ export default function ManagerAssessmentPage() {
             await new Promise(resolve => setTimeout(resolve, 1000));
             toast.success('Assessment submitted successfully');
             router.push('/dashboard/performance');
-        } catch (error) {
+        } catch {
             toast.error('Failed to submit assessment');
         } finally {
             setIsSubmitting(false);
@@ -280,9 +282,9 @@ export default function ManagerAssessmentPage() {
             {/* Rating Sections by Pillar */}
             {Object.entries(criteriaByPillar).map(([pillar, criteria]) => (
                 <Card key={pillar}>
-                    <CardHeader className={pillarInfo[pillar].bgColor}>
-                        <CardTitle className={pillarInfo[pillar].color}>
-                            {pillarInfo[pillar].title}
+                    <CardHeader className={pillarInfo[pillar]?.bgColor ?? 'bg-gray-50'}>
+                        <CardTitle className={pillarInfo[pillar]?.color ?? 'text-gray-700'}>
+                            {pillarInfo[pillar]?.title ?? pillar}
                         </CardTitle>
                         <CardDescription>
                             Current Score: {calculatePillarScore(pillar).toFixed(0)}%
@@ -305,19 +307,19 @@ export default function ManagerAssessmentPage() {
                                 <div className="space-y-3 pl-12">
                                     <div className="flex items-center gap-4">
                                         <Slider
-                                            value={[ratings[criterion.id].score]}
-                                            onValueChange={([value]) => handleRatingChange(criterion.id, value)}
+                                            value={[ratings[criterion.id]?.score ?? 3]}
+                                            onValueChange={([value]) => handleRatingChange(criterion.id, value ?? 3)}
                                             min={1}
                                             max={5}
                                             step={1}
                                             className="flex-1"
                                         />
                                         <div className="w-24 text-center">
-                                            <span className={`font-bold text-lg ${ratingLabels[ratings[criterion.id].score].color}`}>
-                                                {ratings[criterion.id].score}/5
+                                            <span className={`font-bold text-lg ${ratingLabels[ratings[criterion.id]?.score ?? 3]?.color ?? 'text-gray-600'}`}>
+                                                {ratings[criterion.id]?.score ?? 3}/5
                                             </span>
                                             <p className="text-xs text-gray-500">
-                                                {ratingLabels[ratings[criterion.id].score].label}
+                                                {ratingLabels[ratings[criterion.id]?.score ?? 3]?.label ?? 'Meets Expectations'}
                                             </p>
                                         </div>
                                     </div>
@@ -325,7 +327,7 @@ export default function ManagerAssessmentPage() {
                                     {/* Comment */}
                                     <Textarea
                                         placeholder={`Add comments for ${criterion.name} (optional)`}
-                                        value={ratings[criterion.id].comment}
+                                        value={ratings[criterion.id]?.comment ?? ''}
                                         onChange={(e) => handleCommentChange(criterion.id, e.target.value)}
                                         rows={2}
                                         className="text-sm"

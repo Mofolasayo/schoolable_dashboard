@@ -5,6 +5,10 @@ import { redirect } from 'next/navigation';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 
+// Cookie names specific to Super Admin Dashboard
+const AUTH_TOKEN_COOKIE = 'admin-auth-token';
+const USER_INFO_COOKIE = 'admin-user-info';
+
 export async function login(formData: FormData) {
     const email = formData.get('email') as string;
     const password = formData.get('password') as string;
@@ -31,7 +35,7 @@ export async function login(formData: FormData) {
 
         // Store the JWT token in an HTTP-only cookie
         const cookieStore = await cookies();
-        cookieStore.set('auth-token', data.token, {
+        cookieStore.set(AUTH_TOKEN_COOKIE, data.token, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
@@ -40,11 +44,14 @@ export async function login(formData: FormData) {
         });
 
         // Store user info in a separate cookie (not sensitive)
-        cookieStore.set('user-info', JSON.stringify({
+        cookieStore.set(USER_INFO_COOKIE, JSON.stringify({
             id: data.id,
+            employeeId: data.employeeId || data.id,
             email: data.email,
             fullName: data.fullName,
             role: data.role,
+            gender: data.gender || null,
+            avatarUrl: data.avatarUrl || null,
         }), {
             httpOnly: false,
             secure: process.env.NODE_ENV === 'production',
@@ -66,21 +73,23 @@ export async function login(formData: FormData) {
 
 export async function logout() {
     const cookieStore = await cookies();
+    cookieStore.delete(AUTH_TOKEN_COOKIE);
+    cookieStore.delete(USER_INFO_COOKIE);
+    // Also cleanup any legacy cookies
     cookieStore.delete('auth-token');
-    cookieStore.delete('auth_token'); // Cleanup legacy/mismatched cookie
     cookieStore.delete('user-info');
     redirect('/login');
 }
 
 export async function getAuthToken(): Promise<string | null> {
     const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token');
+    const token = cookieStore.get(AUTH_TOKEN_COOKIE);
     return token?.value || null;
 }
 
 export async function getCurrentUser() {
     const cookieStore = await cookies();
-    const userInfo = cookieStore.get('user-info');
+    const userInfo = cookieStore.get(USER_INFO_COOKIE);
 
     if (!userInfo?.value) {
         return null;
@@ -92,3 +101,4 @@ export async function getCurrentUser() {
         return null;
     }
 }
+

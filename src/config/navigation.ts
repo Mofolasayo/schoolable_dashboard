@@ -9,6 +9,13 @@ import {
   FileText,
   Settings,
   Briefcase,
+  UsersRound,
+  Sparkles,
+  FolderOpen,
+  History,
+  Timer,
+  Bell,
+  Star,
 } from 'lucide-react';
 
 /**
@@ -63,6 +70,14 @@ export const dashboardNavigation = [
     section: 'main',
   },
   {
+    title: 'Late Analytics',
+    href: '/dashboard/late-analytics',
+    icon: Timer,
+    description: 'Track late patterns and repeat offenders',
+    section: 'main',
+  },
+
+  {
     title: 'Announcements',
     href: '/dashboard/announcements',
     icon: MessageSquare,
@@ -84,10 +99,52 @@ export const dashboardNavigation = [
     section: 'main',
   },
   {
+    title: 'Teams',
+    href: '/dashboard/teams',
+    icon: UsersRound,
+    description: 'View all teams, KPIs, and performance scores',
+    section: 'main',
+  },
+  {
+    title: 'AI Insights',
+    href: '/dashboard/ai-insights',
+    icon: Sparkles,
+    description: 'AI-generated performance insights across teams',
+    section: 'main',
+  },
+  {
+    title: 'Smart Reminders',
+    href: '/dashboard/smart-reminders',
+    icon: Bell,
+    description: 'Automated notifications for pending actions',
+    section: 'main',
+  },
+  {
+    title: 'Team Lead Ratings',
+    href: '/dashboard/team-lead-ratings',
+    icon: Star,
+    description: 'Rate team leads and view Aura trend alerts',
+    section: 'main',
+  },
+  {
     title: 'HR & Policy',
     href: '/dashboard/hr-policy',
     icon: Briefcase,
     description: 'Manage probation, confirmation, structure, and promotions',
+    section: 'system',
+  },
+  {
+    title: 'Documents',
+    href: '/dashboard/documents',
+    icon: FolderOpen,
+    description: 'Access organizational documents and policies',
+    section: 'system',
+  },
+  {
+    title: 'Audit Logs',
+    href: '/dashboard/audit-logs',
+    icon: History,
+    description: 'Track system activities and changes',
     section: 'system',
   },
   {

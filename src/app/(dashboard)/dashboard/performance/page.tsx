@@ -82,8 +82,8 @@ function getCurrentQuarter(): {
   return {
     quarter: `Q${quarterNum}`,
     year,
-    startDate: startDate.toISOString().split('T')[0],
-    endDate: endDate.toISOString().split('T')[0],
+    startDate: startDate.toISOString().split('T')[0] ?? '',
+    endDate: endDate.toISOString().split('T')[0] ?? '',
   };
 }
 
@@ -213,24 +213,27 @@ export default function PerformancePage() {
         });
 
         const membersWithAura = await Promise.all(auraPromises);
-        setTeamMembers(membersWithAura);
+        setTeamMembers(membersWithAura as TeamMemberWithAura[]);
 
         // Use top performer for spotlight
-        const sortedByScore = [...membersWithAura]
-          .filter((m) => m.auraScore !== undefined)
-          .sort((a, b) => (b.auraScore || 0) - (a.auraScore || 0));
+        const scoredMembers = membersWithAura.filter(
+          (m) => 'auraScore' in m && (m as TeamMemberWithAura).auraScore !== undefined
+        ) as TeamMemberWithAura[];
+
+        const sortedByScore = scoredMembers
+          .sort((a, b) => (b.auraScore ?? 0) - (a.auraScore ?? 0));
 
         const topPerformer = sortedByScore[0];
 
-        if (topPerformer && topPerformer.pillars) {
+        if (topPerformer && topPerformer.auraScore !== undefined && topPerformer.pillars) {
           setAuraData({
             employeeId: topPerformer.id,
             fullName: topPerformer.full_name || 'Unknown',
             department: topPerformer.department || '',
             role: topPerformer.role || '',
-            auraScore: topPerformer.auraScore!,
-            qgpa: topPerformer.qgpa || 0,
-            grade: topPerformer.grade || 'N/A',
+            auraScore: topPerformer.auraScore,
+            qgpa: topPerformer.qgpa ?? 0,
+            grade: topPerformer.grade ?? 'N/A',
             pillars: topPerformer.pillars,
             weeksRatedThisQuarter: 0,
             quarterStart: startDate,
@@ -267,9 +270,9 @@ export default function PerformancePage() {
   const companyAverageScore =
     membersWithScores.length > 0
       ? Math.round(
-          membersWithScores.reduce((sum, m) => sum + (m.auraScore || 0), 0) /
-            membersWithScores.length
-        )
+        membersWithScores.reduce((sum, m) => sum + (m.auraScore || 0), 0) /
+        membersWithScores.length
+      )
       : 0;
 
   // Calculate pillar averages from members with full data
@@ -277,77 +280,77 @@ export default function PerformancePage() {
   const pillarSummaries =
     membersWithPillars.length > 0
       ? [
-          {
-            name: 'Technical (25%)',
-            icon: <Target className="h-4 w-4" />,
-            averageScore: Math.round(
-              membersWithPillars.reduce(
-                (sum, m) => sum + (m.pillars?.technical?.score || 0),
-                0
-              ) / membersWithPillars.length
-            ),
-            trend: 'up' as const,
-          },
-          {
-            name: 'Behavioral (25%)',
-            icon: <Users className="h-4 w-4" />,
-            averageScore: Math.round(
-              membersWithPillars.reduce(
-                (sum, m) => sum + (m.pillars?.behavioral?.score || 0),
-                0
-              ) / membersWithPillars.length
-            ),
-            trend: 'stable' as const,
-          },
-          {
-            name: 'Culture Fit (25%)',
-            icon: <Star className="h-4 w-4" />,
-            averageScore: Math.round(
-              membersWithPillars.reduce(
-                (sum, m) => sum + (m.pillars?.cultureFit?.score || 0),
-                0
-              ) / membersWithPillars.length
-            ),
-            trend: 'up' as const,
-          },
-          {
-            name: 'Growth & Learning (25%)',
-            icon: <TrendingUp className="h-4 w-4" />,
-            averageScore: Math.round(
-              membersWithPillars.reduce(
-                (sum, m) => sum + (m.pillars?.growthLearning?.score || 0),
-                0
-              ) / membersWithPillars.length
-            ),
-            trend: 'up' as const,
-          },
-        ]
+        {
+          name: 'Technical (25%)',
+          icon: <Target className="h-4 w-4" />,
+          averageScore: Math.round(
+            membersWithPillars.reduce(
+              (sum, m) => sum + (m.pillars?.technical?.score || 0),
+              0
+            ) / membersWithPillars.length
+          ),
+          trend: 'up' as const,
+        },
+        {
+          name: 'Behavioral (25%)',
+          icon: <Users className="h-4 w-4" />,
+          averageScore: Math.round(
+            membersWithPillars.reduce(
+              (sum, m) => sum + (m.pillars?.behavioral?.score || 0),
+              0
+            ) / membersWithPillars.length
+          ),
+          trend: 'stable' as const,
+        },
+        {
+          name: 'Culture Fit (25%)',
+          icon: <Star className="h-4 w-4" />,
+          averageScore: Math.round(
+            membersWithPillars.reduce(
+              (sum, m) => sum + (m.pillars?.cultureFit?.score || 0),
+              0
+            ) / membersWithPillars.length
+          ),
+          trend: 'up' as const,
+        },
+        {
+          name: 'Growth & Learning (25%)',
+          icon: <TrendingUp className="h-4 w-4" />,
+          averageScore: Math.round(
+            membersWithPillars.reduce(
+              (sum, m) => sum + (m.pillars?.growthLearning?.score || 0),
+              0
+            ) / membersWithPillars.length
+          ),
+          trend: 'up' as const,
+        },
+      ]
       : [
-          {
-            name: 'Technical (25%)',
-            icon: <Target className="h-4 w-4" />,
-            averageScore: 0,
-            trend: 'stable' as const,
-          },
-          {
-            name: 'Behavioral (25%)',
-            icon: <Users className="h-4 w-4" />,
-            averageScore: 0,
-            trend: 'stable' as const,
-          },
-          {
-            name: 'Culture Fit (25%)',
-            icon: <Star className="h-4 w-4" />,
-            averageScore: 0,
-            trend: 'stable' as const,
-          },
-          {
-            name: 'Growth & Learning (25%)',
-            icon: <TrendingUp className="h-4 w-4" />,
-            averageScore: 0,
-            trend: 'stable' as const,
-          },
-        ];
+        {
+          name: 'Technical (25%)',
+          icon: <Target className="h-4 w-4" />,
+          averageScore: 0,
+          trend: 'stable' as const,
+        },
+        {
+          name: 'Behavioral (25%)',
+          icon: <Users className="h-4 w-4" />,
+          averageScore: 0,
+          trend: 'stable' as const,
+        },
+        {
+          name: 'Culture Fit (25%)',
+          icon: <Star className="h-4 w-4" />,
+          averageScore: 0,
+          trend: 'stable' as const,
+        },
+        {
+          name: 'Growth & Learning (25%)',
+          icon: <TrendingUp className="h-4 w-4" />,
+          averageScore: 0,
+          trend: 'stable' as const,
+        },
+      ];
 
   if (isLoading) {
     return (
@@ -505,9 +508,6 @@ export default function PerformancePage() {
                       </span>
                       {pillar.trend === 'up' && (
                         <TrendingUp className="h-4 w-4 text-emerald-500" />
-                      )}
-                      {pillar.trend === 'down' && (
-                        <TrendingUp className="h-4 w-4 rotate-180 text-red-500" />
                       )}
                     </div>
                     <Progress value={pillar.averageScore} className="mt-2" />

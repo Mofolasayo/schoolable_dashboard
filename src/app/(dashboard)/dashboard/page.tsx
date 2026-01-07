@@ -3,12 +3,20 @@
 
 import {
   Download,
-  Filter,
+  Filter as _Filter,
   Search,
   ArrowUpDown,
   Loader2,
   AlertCircle,
+  RefreshCw,
+  TrendingUp,
+  TrendingDown,
+  Calendar,
+  X,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   PieChart,
   Pie,
@@ -21,137 +29,171 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { useState, useEffect } from 'react';
-import { getAllProfiles, type StaffProfile } from '@/lib/api/backend';
+import { useState, useEffect, useCallback } from 'react';
+import {
+  getDashboardStats,
+  getStaffWithPerformance,
+  type DashboardStats,
+  type StaffWithPerformance,
+} from '@/app/actions/dashboard';
 
-const kpiTrendData = [
-  {
-    name: 'Mon',
-    overall: 85,
-    completion: 88,
-    attendance: 95,
-    compliance: 78,
-    feedback: 82,
-  },
-  {
-    name: 'Tue',
-    overall: 87,
-    completion: 90,
-    attendance: 96,
-    compliance: 80,
-    feedback: 84,
-  },
-  {
-    name: 'Wed',
-    overall: 86,
-    completion: 89,
-    attendance: 94,
-    compliance: 82,
-    feedback: 83,
-  },
-  {
-    name: 'Thu',
-    overall: 88,
-    completion: 91,
-    attendance: 97,
-    compliance: 84,
-    feedback: 85,
-  },
-  {
-    name: 'Fri',
-    overall: 89,
-    completion: 92,
-    attendance: 96,
-    compliance: 83,
-    feedback: 87,
-  },
-  {
-    name: 'Sat',
-    overall: 87,
-    completion: 90,
-    attendance: 93,
-    compliance: 85,
-    feedback: 86,
-  },
-  {
-    name: 'Sun',
-    overall: 89,
-    completion: 92,
-    attendance: 96,
-    compliance: 86,
-    feedback: 88,
-  },
-];
-
-const taskDistributionData = [
-  { name: 'Completed', value: 148, color: '#575ff4' },
-  { name: 'Pending', value: 64, color: '#a8acf8' },
-  { name: 'Overdue', value: 26, color: '#f59e0b' },
-];
-
-const metrics = [
-  {
-    label: 'Task Completion Score',
-    subtitle: 'Tasks',
-    value: '92%',
-    delta: 'vs last week',
-    detail: '12k tasks evaluated',
-    trend: '+5%',
-  },
-  {
-    label: 'Attendance Score',
-    subtitle: 'Attendance',
-    value: '88%',
-    delta: 'vs last week',
-    detail: '320 shifts tracked',
-    trend: '+2%',
-  },
-  {
-    label: 'Compliance Score',
-    subtitle: 'Compliance',
-    value: '96%',
-    delta: 'vs last week',
-    detail: '12 open issues',
-    trend: '+1%',
-  },
-  {
-    label: 'Customer Feedback Score',
-    subtitle: 'Feedback',
-    value: '4.6',
-    delta: 'vs last week',
-    detail: '284 responses',
-    trend: '+0.3',
-  },
-  {
-    label: 'Overall KPI Rating',
-    subtitle: 'Composite',
-    value: '89',
-    delta: 'vs last week',
-    detail: 'Weighted across all KPIs',
-    trend: '+3',
-  },
-];
+type TimeRange = 'today' | 'week' | 'month' | 'custom';
+type KpiFilter = 'overall' | 'completion' | 'attendance' | 'compliance' | 'feedback';
 
 export default function DashboardPage() {
-  const [staff, setStaff] = useState<StaffProfile[]>([]);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [staff, setStaff] = useState<StaffWithPerformance[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [timeRange, setTimeRange] = useState<TimeRange>('week');
+  const [kpiFilter, setKpiFilter] = useState<KpiFilter>('overall');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    async function fetchStaff() {
-      try {
-        setIsLoading(true);
-        const profiles = await getAllProfiles();
-        setStaff(profiles);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch staff');
-      } finally {
-        setIsLoading(false);
-      }
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+
+  // Custom date range state
+  const [_showDatePicker, _setShowDatePicker] = useState(false);
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+
+  // Export CSV function
+  const exportToCSV = () => {
+    if (!stats || staff.length === 0) {
+      toast.error('No data to export');
+      return;
     }
 
-    fetchStaff();
+    // Build CSV content
+    const headers = ['Name', 'Department', 'Role', 'Weekly KPI', 'Task Status', 'Tasks Completed', 'Tasks Pending'];
+    const rows = staff.map(member => [
+      member.full_name,
+      member.department || 'N/A',
+      member.job_title || 'Staff',
+      member.weeklyKpi !== null ? `${member.weeklyKpi}%` : 'N/A',
+      member.taskStatus || 'N/A',
+      member.tasksCompleted,
+      member.tasksPending,
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    // Download file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `staff_performance_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast.success('Report exported successfully!');
+  };
+
+  const fetchData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const [statsData, staffData] = await Promise.all([
+        getDashboardStats(),
+        getStaffWithPerformance(),
+      ]);
+      setStats(statsData);
+      setStaff(staffData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch data');
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Filter staff based on search
+  const filteredStaff = staff.filter(member =>
+    member.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (member.department?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+    (member.job_title?.toLowerCase() || '').includes(searchQuery.toLowerCase())
+  );
+
+  // Get the line data key based on filter
+  const getLineDataKey = () => {
+    switch (kpiFilter) {
+      case 'completion': return 'completion';
+      case 'attendance': return 'attendance';
+      case 'compliance': return 'compliance';
+      case 'feedback': return 'feedback';
+      default: return 'overall';
+    }
+  };
+
+  // Build metrics array from live data
+  const metrics = stats ? [
+    {
+      label: 'Task Completion Score',
+      subtitle: 'Tasks',
+      value: `${stats.taskCompletion.score}%`,
+      delta: 'vs last week',
+      detail: `${stats.taskCompletion.total} tasks total`,
+      trend: stats.taskCompletion.trend,
+      isPositive: true,
+    },
+    {
+      label: 'Attendance Score',
+      subtitle: 'Attendance',
+      value: `${stats.attendance.score}%`,
+      delta: 'vs last week',
+      detail: `${stats.attendance.total} staff tracked`,
+      trend: stats.attendance.trend,
+      isPositive: true,
+    },
+    {
+      label: 'Compliance Score',
+      subtitle: 'Compliance',
+      value: `${stats.compliance.score}%`,
+      delta: 'vs last week',
+      detail: `${stats.compliance.openIssues} open issues`,
+      trend: stats.compliance.trend,
+      isPositive: true,
+    },
+    {
+      label: 'Customer Feedback Score',
+      subtitle: 'Feedback',
+      value: stats.feedback.score.toString(),
+      delta: 'vs last week',
+      detail: `${stats.feedback.responses} responses`,
+      trend: stats.feedback.trend,
+      isPositive: true,
+    },
+    {
+      label: 'Overall KPI Rating',
+      subtitle: 'Composite',
+      value: stats.overallKpi.score.toString(),
+      delta: 'vs last week',
+      detail: 'Weighted across all KPIs',
+      trend: stats.overallKpi.trend,
+      isPositive: true,
+    },
+  ] : [];
+
+  if (isLoading && !stats) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -165,29 +207,94 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 rounded-md border border-border/40 bg-white p-1">
-            <button className="rounded bg-primary/10 px-3 py-1 text-xs font-medium text-primary transition-colors">
-              Today
-            </button>
-            <button className="rounded px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
-              Week
-            </button>
-            <button className="rounded px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
-              Month
-            </button>
-            <button className="rounded px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
-              Custom
-            </button>
+            {(['today', 'week', 'month', 'custom'] as TimeRange[]).map((range) => (
+              <button
+                key={range}
+                onClick={() => setTimeRange(range)}
+                className={`rounded px-3 py-1 text-xs font-medium transition-colors ${timeRange === range
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                  }`}
+              >
+                {range.charAt(0).toUpperCase() + range.slice(1)}
+              </button>
+            ))}
           </div>
-          <button className="flex items-center gap-2 rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
-            <Download className="h-3.5 w-3.5" />
-            Export
+          <button
+            onClick={fetchData}
+            disabled={isLoading}
+            className="flex items-center gap-2 rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
           </button>
-          <button className="flex items-center gap-2 rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
-            <Filter className="h-3.5 w-3.5" />
-            Filters
+          <button
+            onClick={exportToCSV}
+            className="flex items-center gap-2 rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Export CSV
           </button>
         </div>
       </div>
+
+      {/* Custom Date Range Picker */}
+      {timeRange === 'custom' && (
+        <div className="flex items-center gap-4 rounded-lg border border-border/40 bg-white p-4">
+          <Calendar className="h-4 w-4 text-muted-foreground" />
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium text-muted-foreground">From:</label>
+            <input
+              type="date"
+              value={customStartDate}
+              onChange={(e) => setCustomStartDate(e.target.value)}
+              className="rounded-md border border-border/40 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium text-muted-foreground">To:</label>
+            <input
+              type="date"
+              value={customEndDate}
+              onChange={(e) => setCustomEndDate(e.target.value)}
+              className="rounded-md border border-border/40 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+          <button
+            onClick={fetchData}
+            disabled={!customStartDate || !customEndDate}
+            className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 disabled:opacity-50"
+          >
+            Apply
+          </button>
+          <button
+            onClick={() => {
+              setTimeRange('week');
+              setCustomStartDate('');
+              setCustomEndDate('');
+            }}
+            className="rounded-md border border-border/40 bg-white p-1.5 text-muted-foreground hover:bg-muted/50"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Error Banner */}
+      {
+        error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 text-red-500" />
+            <p className="text-sm text-red-700">{error}</p>
+            <button
+              onClick={fetchData}
+              className="ml-auto text-sm font-medium text-red-700 hover:underline"
+            >
+              Retry
+            </button>
+          </div>
+        )
+      }
 
       {/* Metrics Grid - Full Width */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -210,7 +317,13 @@ export default function DashboardPage() {
               {metric.value}
             </p>
             <div className="flex items-center gap-2 text-xs">
-              <span className="font-medium text-emerald-600">
+              <span className={`flex items-center gap-1 font-medium ${metric.isPositive ? 'text-emerald-600' : 'text-red-600'
+                }`}>
+                {metric.isPositive ? (
+                  <TrendingUp className="h-3 w-3" />
+                ) : (
+                  <TrendingDown className="h-3 w-3" />
+                )}
                 {metric.trend}
               </span>
               <span className="text-muted-foreground/40">•</span>
@@ -237,82 +350,86 @@ export default function DashboardPage() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-muted-foreground">
-                  Updated 5 mins ago
+                  Updated just now
                 </span>
               </div>
             </div>
 
             <div className="mb-6 flex flex-wrap items-center gap-2">
-              <button className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-primary/90">
-                Overall
-              </button>
-              <button className="rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
-                Completion
-              </button>
-              <button className="rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
-                Attendance
-              </button>
-              <button className="rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
-                Compliance
-              </button>
-              <button className="rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
-                Feedback
-              </button>
+              {(['overall', 'completion', 'attendance', 'compliance', 'feedback'] as KpiFilter[]).map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setKpiFilter(filter)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${kpiFilter === filter
+                    ? 'bg-primary text-white shadow-sm'
+                    : 'border border-border/40 bg-white text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                    }`}
+                >
+                  {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                </button>
+              ))}
             </div>
 
             <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={kpiTrendData}>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="#f1f5f9"
-                    vertical={false}
-                  />
-                  <XAxis
-                    dataKey="name"
-                    stroke="#94a3b8"
-                    fontSize={11}
-                    tickLine={false}
-                    axisLine={false}
-                    dy={10}
-                  />
-                  <YAxis
-                    stroke="#94a3b8"
-                    fontSize={11}
-                    tickLine={false}
-                    axisLine={false}
-                    dx={-10}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'white',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '8px',
-                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)',
-                      fontSize: '12px',
-                      color: '#1e293b',
-                    }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="overall"
-                    stroke="#575ff4"
-                    strokeWidth={2}
-                    dot={{
-                      fill: 'white',
-                      stroke: '#575ff4',
-                      strokeWidth: 2,
-                      r: 4,
-                    }}
-                    activeDot={{
-                      r: 6,
-                      fill: '#575ff4',
-                      stroke: 'white',
-                      strokeWidth: 2,
-                    }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              {stats?.kpiTrend && stats.kpiTrend.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={stats.kpiTrend}>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="#f1f5f9"
+                      vertical={false}
+                    />
+                    <XAxis
+                      dataKey="name"
+                      stroke="#94a3b8"
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      dy={10}
+                    />
+                    <YAxis
+                      stroke="#94a3b8"
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      dx={-10}
+                      domain={[0, 100]}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'white',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)',
+                        fontSize: '12px',
+                        color: '#1e293b',
+                      }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey={getLineDataKey()}
+                      stroke="#575ff4"
+                      strokeWidth={2}
+                      dot={{
+                        fill: 'white',
+                        stroke: '#575ff4',
+                        strokeWidth: 2,
+                        r: 4,
+                      }}
+                      activeDot={{
+                        r: 6,
+                        fill: '#575ff4',
+                        stroke: 'white',
+                        strokeWidth: 2,
+                      }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  No trend data available
+                </div>
+              )}
             </div>
           </div>
 
@@ -334,6 +451,8 @@ export default function DashboardPage() {
                     <input
                       type="search"
                       placeholder="Search staff"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
                       className="h-9 w-48 rounded-lg border border-border/40 bg-white pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
                     />
                   </div>
@@ -362,7 +481,7 @@ export default function DashboardPage() {
                       Task Status
                     </th>
                     <th className="px-6 py-3 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
-                      Attendance
+                      Tasks
                     </th>
                     <th className="px-6 py-3 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
                       Actions
@@ -379,24 +498,17 @@ export default function DashboardPage() {
                         </p>
                       </td>
                     </tr>
-                  ) : error ? (
-                    <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center">
-                        <AlertCircle className="mx-auto h-8 w-8 text-red-500" />
-                        <p className="mt-2 text-sm text-red-600">{error}</p>
-                      </td>
-                    </tr>
-                  ) : staff.length === 0 ? (
+                  ) : filteredStaff.length === 0 ? (
                     <tr>
                       <td
                         colSpan={6}
                         className="px-6 py-12 text-center text-sm text-muted-foreground"
                       >
-                        No staff members found
+                        {searchQuery ? 'No staff found matching your search' : 'No staff members found'}
                       </td>
                     </tr>
                   ) : (
-                    staff.slice(0, 10).map((member) => (
+                    filteredStaff.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((member) => (
                       <tr
                         key={member.id}
                         className="transition-colors hover:bg-muted/20"
@@ -404,16 +516,13 @@ export default function DashboardPage() {
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             <img
-                              src={
-                                member.avatar_url ||
-                                `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.full_name}`
-                              }
-                              alt={member.full_name || 'Staff'}
+                              src={member.avatar_url}
+                              alt={member.full_name}
                               className="h-8 w-8 rounded-full ring-2 ring-white"
                             />
                             <div>
                               <p className="text-sm font-medium text-gray-800">
-                                {member.full_name || 'Unknown'}
+                                {member.full_name}
                               </p>
                               <p className="text-xs text-muted-foreground">
                                 {member.department || 'N/A'}
@@ -423,29 +532,43 @@ export default function DashboardPage() {
                         </td>
                         <td className="px-6 py-4">
                           <p className="text-sm text-gray-700">
-                            {member.job_title || member.role || 'Staff'}
+                            {member.job_title || 'Staff'}
                           </p>
                         </td>
                         <td className="px-6 py-4">
-                          <span className="text-xs text-muted-foreground">
-                            N/A
-                          </span>
+                          {member.weeklyKpi !== null ? (
+                            <span className={`text-sm font-medium ${member.weeklyKpi >= 70 ? 'text-emerald-600' :
+                              member.weeklyKpi >= 50 ? 'text-amber-600' :
+                                'text-red-600'
+                              }`}>
+                              {member.weeklyKpi}%
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">N/A</span>
+                          )}
                         </td>
                         <td className="px-6 py-4">
-                          <span
-                            className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-medium ${
-                              member.status === 'active'
+                          {member.taskStatus ? (
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-medium ${member.taskStatus === 'On Track'
                                 ? 'bg-emerald-100 text-emerald-700'
-                                : 'bg-gray-100 text-gray-700'
-                            }`}
-                          >
-                            {member.status || 'N/A'}
-                          </span>
+                                : member.taskStatus === 'At Risk'
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : 'bg-red-100 text-red-700'
+                                }`}
+                            >
+                              {member.taskStatus}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">N/A</span>
+                          )}
                         </td>
                         <td className="px-6 py-4">
-                          <span className="text-xs text-muted-foreground">
-                            N/A
-                          </span>
+                          <div className="text-xs">
+                            <span className="text-emerald-600">{member.tasksCompleted} done</span>
+                            <span className="text-muted-foreground"> / </span>
+                            <span className="text-amber-600">{member.tasksPending} pending</span>
+                          </div>
                         </td>
                         <td className="px-6 py-4">
                           <button className="text-xs font-medium text-primary hover:text-primary/80 hover:underline">
@@ -462,21 +585,43 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between border-t border-border/40 px-6 py-4">
               <p className="text-xs text-muted-foreground">
                 Showing{' '}
-                {staff.length > 0 ? '1-' + Math.min(10, staff.length) : '0'} of{' '}
-                {staff.length} staff
+                {filteredStaff.length > 0 ? `${(currentPage - 1) * pageSize + 1}-${Math.min(currentPage * pageSize, filteredStaff.length)}` : '0'} of{' '}
+                {filteredStaff.length} staff
               </p>
-              <div className="flex items-center gap-2">
-                <button className="rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground disabled:opacity-50">
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="flex items-center gap-1 rounded-md border border-border/40 bg-white px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
                   Prev
                 </button>
-                <button className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90">
-                  1
-                </button>
-                <button className="rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground">
-                  2
-                </button>
-                <button className="rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground">
+                {Array.from({ length: Math.min(5, Math.ceil(filteredStaff.length / pageSize)) }, (_, i) => {
+                  const pageNum = i + 1;
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${currentPage === pageNum
+                        ? 'bg-primary text-white'
+                        : 'border border-border/40 bg-white text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                        }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+                {Math.ceil(filteredStaff.length / pageSize) > 5 && (
+                  <span className="px-2 text-xs text-muted-foreground">...</span>
+                )}
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(Math.ceil(filteredStaff.length / pageSize), p + 1))}
+                  disabled={currentPage >= Math.ceil(filteredStaff.length / pageSize)}
+                  className="flex items-center gap-1 rounded-md border border-border/40 bg-white px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   Next
+                  <ChevronRight className="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>
@@ -486,7 +631,7 @@ export default function DashboardPage() {
         {/* Right Column (Secondary Content) */}
         <div className="min-w-0 space-y-6">
           {/* Task Distribution */}
-          <div className="rounded-xl border border-border/40 bg-white p-2 shadow-sm">
+          <div className="rounded-xl border border-border/40 bg-white p-6 shadow-sm">
             <div className="mb-6 flex items-start justify-between">
               <div>
                 <h2 className="text-sm font-normal text-gray-700">
@@ -497,55 +642,67 @@ export default function DashboardPage() {
                 </p>
               </div>
               <span className="rounded-full bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                Today
+                {timeRange.charAt(0).toUpperCase() + timeRange.slice(1)}
               </span>
             </div>
 
-            <div className="h-[260px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={taskDistributionData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={4}
-                    dataKey="value"
-                    stroke="none"
-                  >
-                    {taskDistributionData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="mt-6 space-y-4">
-              {taskDistributionData.map((item) => (
-                <div
-                  key={item.name}
-                  className="flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: item.color }}
-                    />
-                    <span className="text-sm text-gray-700">{item.name}</span>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-gray-800">
-                      {item.value}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {Math.round((item.value / 238) * 100)}%
-                    </p>
-                  </div>
+            {stats?.taskDistribution && stats.taskDistribution.length > 0 ? (
+              <>
+                <div className="h-[200px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={stats.taskDistribution.filter(d => d.value > 0)}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={70}
+                        paddingAngle={4}
+                        dataKey="value"
+                        stroke="none"
+                      >
+                        {stats.taskDistribution.filter(d => d.value > 0).map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
-              ))}
-            </div>
+
+                <div className="mt-6 space-y-3">
+                  {stats.taskDistribution.map((item) => {
+                    const total = stats.taskDistribution.reduce((sum, i) => sum + i.value, 0);
+                    const percentage = total > 0 ? Math.round((item.value / total) * 100) : 0;
+                    return (
+                      <div
+                        key={item.name}
+                        className="flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: item.color }}
+                          />
+                          <span className="text-sm text-gray-700">{item.name}</span>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-medium text-gray-800">
+                            {item.value}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {percentage}%
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center justify-center h-[200px] text-muted-foreground">
+                No task data available
+              </div>
+            )}
           </div>
 
           {/* Usage Summary */}
@@ -558,12 +715,15 @@ export default function DashboardPage() {
                 Monitor KPIs across teams in one place.
               </p>
             </div>
-            <button className="w-full rounded-md bg-primary px-4 py-2 text-xs font-medium text-white shadow-sm transition-colors hover:bg-primary/90">
+            <a
+              href="/dashboard/reports"
+              className="block w-full rounded-md bg-primary px-4 py-2 text-center text-xs font-medium text-white shadow-sm transition-colors hover:bg-primary/90"
+            >
               View reports
-            </button>
+            </a>
           </div>
         </div>
       </div>
-    </div>
+    </div >
   );
 }

@@ -1,5 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
+// Cookie name specific to Super Admin Dashboard
+const AUTH_TOKEN_COOKIE = 'admin-auth-token';
+
 /**
  * Middleware to protect dashboard routes
  * Checks for auth_token cookie and redirects to login if not present
@@ -12,7 +15,7 @@ export async function middleware(request: NextRequest) {
   const isPublicPath = publicPaths.some(path => pathname.startsWith(path));
 
   // Check for auth token
-  const authToken = request.cookies.get('auth-token')?.value;
+  const authToken = request.cookies.get(AUTH_TOKEN_COOKIE)?.value;
 
   // Redirect to login if accessing protected route without token
   if (!isPublicPath && !authToken) {

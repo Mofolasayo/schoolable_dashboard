@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable @next/next/no-img-element */
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { login } from './actions';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,7 @@ import { useToast } from '@/lib/hooks/use-toast';
 import { AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useEffect } from 'react';
 
-export default function LoginPage() {
+function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -68,112 +68,141 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-4 py-12 sm:px-6 lg:px-8">
-      <Card className="w-full max-w-md shadow-lg">
-        <CardHeader className="space-y-3">
-          <div className="mb-4 flex justify-center">
-            <img
-              src="/schoolable_logo.png"
-              alt="Schoolable"
-              className="h-16 w-auto object-contain"
+    <Card className="w-full max-w-md shadow-lg">
+      <CardHeader className="space-y-3">
+        <div className="mb-4 flex justify-center">
+          <img
+            src="/schoolable_logo.png"
+            alt="Schoolable"
+            className="h-16 w-auto object-contain"
+          />
+        </div>
+        <CardTitle className="text-center text-2xl font-bold text-slate-900">
+          Schoolable Admin
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {error && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="email" className="font-medium text-slate-700">
+              Admin Email
+            </Label>
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              required
+              placeholder="schoolablesuberadmin@gmail.com"
+              className="h-11"
+              disabled={isLoading}
+              autoComplete="email"
             />
           </div>
-          <CardTitle className="text-center text-2xl font-bold text-slate-900">
-            Schoolable Admin
-          </CardTitle>
-          {/* <CardDescription className="text-center text-slate-600">
-                        Super Admin Dashboard Access
-                    </CardDescription> */}
-        </CardHeader>
-        <CardContent>
-          {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email" className="font-medium text-slate-700">
-                Admin Email
-              </Label>
+          <div className="space-y-2">
+            <Label htmlFor="password" className="font-medium text-slate-700">
+              Password
+            </Label>
+            <div className="relative">
               <Input
-                id="email"
-                name="email"
-                type="email"
+                id="password"
+                name="password"
+                type={showPassword ? 'text' : 'password'}
                 required
-                placeholder="schoolablesuberadmin@gmail.com"
-                className="h-11"
+                className="h-11 pr-10"
                 disabled={isLoading}
-                autoComplete="email"
+                autoComplete="current-password"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 transition-colors hover:text-slate-700"
+                disabled={isLoading}
+              >
+                {showPassword ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="password" className="font-medium text-slate-700">
-                Password
-              </Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  name="password"
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  className="h-11 pr-10"
-                  disabled={isLoading}
-                  autoComplete="current-password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 transition-colors hover:text-slate-700"
-                  disabled={isLoading}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                </button>
-              </div>
-            </div>
+          </div>
 
-            <Button
-              type="submit"
-              className="mt-6 h-11 w-full bg-indigo-600 hover:bg-indigo-700"
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Signing in...
-                </>
-              ) : (
-                'Sign In'
-              )}
-            </Button>
-          </form>
+          <Button
+            type="submit"
+            className="mt-6 h-11 w-full bg-indigo-600 hover:bg-indigo-700"
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Signing in...
+              </>
+            ) : (
+              'Sign In'
+            )}
+          </Button>
+        </form>
 
-          <p className="mt-6 text-center text-xs text-slate-500">
-            Authorized access only. Contact your administrator for credentials.
-          </p>
+        <p className="mt-6 text-center text-xs text-slate-500">
+          Authorized access only. Contact your administrator for credentials.
+        </p>
 
-          {/* Debug info in development */}
-          {process.env.NODE_ENV === 'development' && (
-            <div className="mt-4 rounded-lg bg-slate-100 p-3 text-xs">
-              <p className="mb-1 font-semibold text-slate-700">
-                Test Credentials:
-              </p>
-              <p className="text-slate-600">
-                Email: schoolableadmin@gmail.com
-              </p>
-              <p className="text-slate-600">
-                Password: schoolableadmin123
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        {/* Debug info in development */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mt-4 rounded-lg bg-slate-100 p-3 text-xs">
+            <p className="mb-1 font-semibold text-slate-700">
+              Test Credentials:
+            </p>
+            <p className="text-slate-600">
+              Email: schoolableadmin@gmail.com
+            </p>
+            <p className="text-slate-600">
+              Password: schoolableadmin123
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function LoginFormFallback() {
+  return (
+    <Card className="w-full max-w-md shadow-lg">
+      <CardHeader className="space-y-3">
+        <div className="mb-4 flex justify-center">
+          <div className="h-16 w-16 animate-pulse rounded-lg bg-slate-200" />
+        </div>
+        <div className="h-8 mx-auto w-48 animate-pulse rounded bg-slate-200" />
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <div className="h-4 w-20 animate-pulse rounded bg-slate-200" />
+          <div className="h-11 w-full animate-pulse rounded bg-slate-200" />
+        </div>
+        <div className="space-y-2">
+          <div className="h-4 w-20 animate-pulse rounded bg-slate-200" />
+          <div className="h-11 w-full animate-pulse rounded bg-slate-200" />
+        </div>
+        <div className="h-11 w-full animate-pulse rounded bg-slate-200" />
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-4 py-12 sm:px-6 lg:px-8">
+      <Suspense fallback={<LoginFormFallback />}>
+        <LoginForm />
+      </Suspense>
     </div>
   );
 }

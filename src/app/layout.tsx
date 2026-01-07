@@ -7,8 +7,13 @@ import { Toaster } from '@/components/ui/toaster';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Schoolable',
-  description: 'Built with Next.js, TypeScript, and Shadcn/ui',
+  title: 'Schoolable | HR Dashboard',
+  description: 'Super Admin Dashboard for Schoolable HR Platform',
+  icons: {
+    icon: '/schoolable_logo.png',
+    shortcut: '/schoolable_logo.png',
+    apple: '/schoolable_logo.png',
+  },
 };
 
 export default function RootLayout({

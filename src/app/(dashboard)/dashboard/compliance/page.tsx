@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Download,
   Search,
@@ -8,126 +8,51 @@ import {
   AlertTriangle,
   CheckCircle2,
   XCircle,
-  Clock,
   Filter,
   Plus,
   FileText,
   Users,
   Calendar,
+  Clock,
+  Loader2,
+  RefreshCw,
 } from 'lucide-react';
-
-// Mock compliance data
-const complianceItems = [
-  {
-    id: 1,
-    title: 'Data Protection Policy Compliance',
-    category: 'Data Security',
-    status: 'Compliant',
-    department: 'IT',
-    lastReview: '2024-01-05',
-    nextReview: '2024-04-05',
-    complianceRate: 98,
-    staffCount: 45,
-    nonCompliant: 1,
-    description:
-      'All staff members have completed data protection training and signed the updated policy agreement.',
-  },
-  {
-    id: 2,
-    title: 'Health & Safety Training Certification',
-    category: 'Health & Safety',
-    status: 'At Risk',
-    department: 'Operations',
-    lastReview: '2023-11-15',
-    nextReview: '2024-02-15',
-    complianceRate: 72,
-    staffCount: 38,
-    nonCompliant: 11,
-    description:
-      '11 staff members have expired certifications. Renewal training scheduled for next week.',
-  },
-  {
-    id: 3,
-    title: 'Code of Conduct Acknowledgment',
-    category: 'HR Policies',
-    status: 'Compliant',
-    department: 'HR',
-    lastReview: '2024-01-10',
-    nextReview: '2024-07-10',
-    complianceRate: 100,
-    staffCount: 152,
-    nonCompliant: 0,
-    description:
-      'All employees have acknowledged the updated code of conduct policy.',
-  },
-  {
-    id: 4,
-    title: 'Financial Reporting Compliance',
-    category: 'Finance',
-    status: 'Non-Compliant',
-    department: 'Finance',
-    lastReview: '2023-12-20',
-    nextReview: '2024-01-20',
-    complianceRate: 65,
-    staffCount: 12,
-    nonCompliant: 4,
-    description:
-      '4 finance team members need to complete updated reporting procedures training.',
-  },
-  {
-    id: 5,
-    title: 'Access Control Policy Review',
-    category: 'IT Security',
-    status: 'Compliant',
-    department: 'IT',
-    lastReview: '2024-01-08',
-    nextReview: '2024-04-08',
-    complianceRate: 95,
-    staffCount: 89,
-    nonCompliant: 4,
-    description: 'Access control audit completed. Minor issues addressed.',
-  },
-];
-
-const summaryMetrics = [
-  {
-    label: 'Overall Compliance',
-    value: '92%',
-    detail: '+2% vs last month',
-    icon: Shield,
-    iconColor: 'text-primary',
-  },
-  {
-    label: 'Compliant Policies',
-    value: '28',
-    detail: 'Out of 32 active policies',
-    icon: CheckCircle2,
-    iconColor: 'text-primary',
-  },
-  {
-    label: 'At Risk',
-    value: '3',
-    detail: 'Require attention',
-    icon: AlertTriangle,
-    iconColor: 'text-primary',
-  },
-  {
-    label: 'Non-Compliant',
-    value: '1',
-    detail: 'Immediate action needed',
-    icon: XCircle,
-    iconColor: 'text-primary',
-  },
-];
+import { toast } from 'sonner';
+import {
+  getCompliancePolicies,
+  getComplianceMetrics,
+  createCompliancePolicy,
+  deleteCompliancePolicy,
+  getComplianceSubmissions,
+  reviewComplianceSubmission,
+  CompliancePolicy,
+  ComplianceMetrics,
+  ComplianceSubmission,
+} from '@/app/actions/compliance';
 
 export default function CompliancePage() {
   const [selectedStatus, setSelectedStatus] = useState<string>('All');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedId, setSelectedId] = useState<number>(
-    complianceItems.length > 0 ? complianceItems[0]!.id : 0
-  );
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isSubmissionsModalOpen, setIsSubmissionsModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [policies, setPolicies] = useState<CompliancePolicy[]>([]);
+  const [metrics, setMetrics] = useState<ComplianceMetrics | null>(null);
+  const [submissions, setSubmissions] = useState<ComplianceSubmission[]>([]);
+
+  // New policy form state
+  const [newPolicy, setNewPolicy] = useState({
+    title: '',
+    category: 'Data Security',
+    department: '',
+    description: '',
+    type: 'policy',
+    reviewFrequencyDays: 90,
+  });
 
   const categories = [
     'All',
@@ -138,8 +63,39 @@ export default function CompliancePage() {
     'IT Security',
   ];
   const statuses = ['All', 'Compliant', 'At Risk', 'Non-Compliant'];
+  const policyTypes = [
+    { value: 'policy', label: 'Policy Acknowledgement' },
+    { value: 'upload', label: 'Document Upload' },
+    { value: 'training', label: 'Training Completion' },
+  ];
 
-  const filteredItems = complianceItems.filter((item) => {
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [policiesData, metricsData] = await Promise.all([
+        getCompliancePolicies(),
+        getComplianceMetrics(),
+      ]);
+      setPolicies(policiesData);
+      setMetrics(metricsData);
+
+      // Select first policy if none selected
+      if (policiesData.length > 0 && !selectedId) {
+        setSelectedId(policiesData[0]?.id || null);
+      }
+    } catch (error) {
+      console.error('Error fetching compliance data:', error);
+      toast.error('Failed to load compliance data');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedId]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const filteredItems = policies.filter((item) => {
     const matchesStatus =
       selectedStatus === 'All' || item.status === selectedStatus;
     const matchesCategory =
@@ -152,7 +108,7 @@ export default function CompliancePage() {
     return matchesStatus && matchesCategory && matchesSearch;
   });
 
-  const selectedPolicy = complianceItems.find((item) => item.id === selectedId);
+  const selectedPolicy = policies.find((item) => item.id === selectedId);
 
   const statusBadgeClass: Record<string, string> = {
     Compliant: 'bg-primary/10 text-primary',
@@ -166,6 +122,135 @@ export default function CompliancePage() {
     return 'bg-primary';
   };
 
+  const handleCreatePolicy = async () => {
+    if (!newPolicy.title.trim() || !newPolicy.description.trim()) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const result = await createCompliancePolicy({
+        title: newPolicy.title,
+        category: newPolicy.category,
+        department: newPolicy.department || undefined,
+        description: newPolicy.description,
+        type: newPolicy.type,
+        reviewFrequencyDays: newPolicy.reviewFrequencyDays,
+      });
+
+      if (result.success) {
+        toast.success('Policy created successfully');
+        setIsCreateModalOpen(false);
+        setNewPolicy({
+          title: '',
+          category: 'Data Security',
+          department: '',
+          description: '',
+          type: 'policy',
+          reviewFrequencyDays: 90,
+        });
+        fetchData();
+      } else {
+        toast.error(result.error || 'Failed to create policy');
+      }
+    } catch (error) {
+      console.error('Error creating policy:', error);
+      toast.error('Failed to create policy');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeletePolicy = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this policy?')) return;
+
+    try {
+      const result = await deleteCompliancePolicy(id);
+      if (result.success) {
+        toast.success('Policy deleted');
+        fetchData();
+      } else {
+        toast.error(result.error || 'Failed to delete policy');
+      }
+    } catch (error) {
+      console.error('Error deleting policy:', error);
+      toast.error('Failed to delete policy');
+    }
+  };
+
+  const fetchSubmissions = async (policyId: string) => {
+    try {
+      const data = await getComplianceSubmissions(policyId);
+      setSubmissions(data);
+      setIsSubmissionsModalOpen(true);
+    } catch (error) {
+      console.error('Error fetching submissions:', error);
+      toast.error('Failed to load submissions');
+    }
+  };
+
+  const handleReviewSubmission = async (submissionId: string, status: 'approved' | 'rejected', notes?: string) => {
+    try {
+      const result = await reviewComplianceSubmission(submissionId, status, notes);
+      if (result.success) {
+        toast.success(`Submission ${status}`);
+        // Refresh submissions
+        if (selectedId) {
+          fetchSubmissions(selectedId);
+        }
+        fetchData(); // Refresh metrics
+      } else {
+        toast.error(result.error || 'Failed to review submission');
+      }
+    } catch (error) {
+      console.error('Error reviewing submission:', error);
+      toast.error('Failed to review submission');
+    }
+  };
+
+  const summaryMetrics = [
+    {
+      label: 'Overall Compliance',
+      value: metrics ? `${metrics.overallComplianceRate}%` : '—',
+      detail: 'Organization-wide rate',
+      icon: Shield,
+      iconColor: 'text-primary',
+    },
+    {
+      label: 'Compliant Policies',
+      value: metrics?.compliantPolicies?.toString() || '—',
+      detail: `Out of ${metrics?.totalPolicies || 0} active policies`,
+      icon: CheckCircle2,
+      iconColor: 'text-primary',
+    },
+    {
+      label: 'At Risk',
+      value: metrics?.atRiskPolicies?.toString() || '—',
+      detail: 'Require attention',
+      icon: AlertTriangle,
+      iconColor: 'text-amber-500',
+    },
+    {
+      label: 'Non-Compliant',
+      value: metrics?.nonCompliantPolicies?.toString() || '—',
+      detail: 'Immediate action needed',
+      icon: XCircle,
+      iconColor: 'text-rose-500',
+    },
+  ];
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading compliance data...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative space-y-6">
       {/* Header Section */}
@@ -178,6 +263,13 @@ export default function CompliancePage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => fetchData()}
+            className="flex items-center gap-2 rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh
+          </button>
           <button className="flex items-center gap-2 rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
             <Filter className="h-3.5 w-3.5" />
             Filters
@@ -248,11 +340,10 @@ export default function CompliancePage() {
                   <button
                     key={status}
                     onClick={() => setSelectedStatus(status)}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                      selectedStatus === status
-                        ? 'bg-primary text-white'
-                        : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }`}
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${selectedStatus === status
+                      ? 'bg-primary text-white'
+                      : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
                   >
                     {status}
                   </button>
@@ -269,11 +360,10 @@ export default function CompliancePage() {
                   <button
                     key={category}
                     onClick={() => setSelectedCategory(category)}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                      selectedCategory === category
-                        ? 'bg-primary text-white'
-                        : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }`}
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${selectedCategory === category
+                      ? 'bg-primary text-white'
+                      : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
                   >
                     {category.replace('All', 'All Categories')}
                   </button>
@@ -292,11 +382,10 @@ export default function CompliancePage() {
             <div
               key={item.id}
               onClick={() => setSelectedId(item.id)}
-              className={`cursor-pointer rounded-xl border bg-white p-5 shadow-sm transition hover:shadow-md ${
-                selectedId === item.id
-                  ? 'border-primary ring-1 ring-primary'
-                  : 'border-border/40'
-              }`}
+              className={`cursor-pointer rounded-xl border bg-white p-5 shadow-sm transition hover:shadow-md ${selectedId === item.id
+                ? 'border-primary ring-1 ring-primary'
+                : 'border-border/40'
+                }`}
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
@@ -323,6 +412,12 @@ export default function CompliancePage() {
                         {item.category}
                       </span>
                     </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Rate:</span>
+                      <span className="font-medium text-gray-700">
+                        {item.complianceRate}%
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -331,7 +426,9 @@ export default function CompliancePage() {
 
           {filteredItems.length === 0 && (
             <div className="rounded-xl border border-border/40 bg-white p-10 text-center text-sm text-muted-foreground">
-              No compliance items found matching your filters.
+              {policies.length === 0
+                ? 'No compliance policies yet. Create your first policy to get started.'
+                : 'No compliance items found matching your filters.'}
             </div>
           )}
         </div>
@@ -405,7 +502,7 @@ export default function CompliancePage() {
                     <p className="mb-1 text-muted-foreground">Department</p>
                     <p className="flex items-center gap-2 font-medium text-gray-800">
                       <Users className="h-3.5 w-3.5" />
-                      {selectedPolicy.department}
+                      {selectedPolicy.department || 'All Departments'}
                     </p>
                   </div>
                   <div>
@@ -419,16 +516,23 @@ export default function CompliancePage() {
                     <p className="mb-1 text-muted-foreground">Last Review</p>
                     <p className="flex items-center gap-2 font-medium text-gray-800">
                       <Clock className="h-3.5 w-3.5" />
-                      {new Date(selectedPolicy.lastReview).toLocaleDateString()}
+                      {selectedPolicy.lastReview
+                        ? new Date(selectedPolicy.lastReview).toLocaleDateString()
+                        : '—'}
                     </p>
                   </div>
                   <div>
                     <p className="mb-1 text-muted-foreground">Next Review</p>
                     <p
-                      className={`flex items-center gap-2 font-medium ${new Date(selectedPolicy.nextReview) < new Date() ? 'text-red-600' : 'text-gray-800'}`}
+                      className={`flex items-center gap-2 font-medium ${selectedPolicy.nextReview && new Date(selectedPolicy.nextReview) < new Date()
+                        ? 'text-red-600'
+                        : 'text-gray-800'
+                        }`}
                     >
                       <Calendar className="h-3.5 w-3.5" />
-                      {new Date(selectedPolicy.nextReview).toLocaleDateString()}
+                      {selectedPolicy.nextReview
+                        ? new Date(selectedPolicy.nextReview).toLocaleDateString()
+                        : '—'}
                     </p>
                   </div>
                 </div>
@@ -440,20 +544,20 @@ export default function CompliancePage() {
                   <p className="text-sm leading-relaxed text-gray-600">
                     {selectedPolicy.description}
                   </p>
-                  <p className="mt-4 text-sm leading-relaxed text-gray-600">
-                    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed
-                    do eiusmod tempor incididunt ut labore et dolore magna
-                    aliqua. Ut enim ad minim veniam, quis nostrud exercitation
-                    ullamco laboris nisi ut aliquip ex ea commodo consequat.
-                  </p>
                 </div>
 
                 <div className="flex gap-3 pt-4">
-                  <button className="flex-1 rounded-md bg-primary px-4 py-2 text-xs font-medium text-white shadow-sm transition-colors hover:bg-primary/90">
-                    Update Status
+                  <button
+                    onClick={() => fetchSubmissions(selectedPolicy.id)}
+                    className="flex-1 rounded-md bg-primary px-4 py-2 text-xs font-medium text-white shadow-sm transition-colors hover:bg-primary/90"
+                  >
+                    View Submissions
                   </button>
-                  <button className="flex-1 rounded-md border border-border/40 bg-white px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
-                    View Audit Log
+                  <button
+                    onClick={() => handleDeletePolicy(selectedPolicy.id)}
+                    className="flex-1 rounded-md border border-red-200 bg-white px-4 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-50"
+                  >
+                    Delete Policy
                   </button>
                 </div>
               </div>
@@ -471,7 +575,7 @@ export default function CompliancePage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-border/40 p-4">
-              <h3 className="text-lg font-medium text-gray-800">New Policy</h3>
+              <h3 className="text-lg font-medium text-gray-800">New Compliance Policy</h3>
               <button
                 onClick={() => setIsCreateModalOpen(false)}
                 className="text-muted-foreground hover:text-foreground"
@@ -483,10 +587,12 @@ export default function CompliancePage() {
             <div className="space-y-4 p-6">
               <div className="space-y-2">
                 <label className="text-xs font-medium text-gray-700">
-                  Policy Title
+                  Policy Title *
                 </label>
                 <input
                   type="text"
+                  value={newPolicy.title}
+                  onChange={(e) => setNewPolicy({ ...newPolicy, title: e.target.value })}
                   className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
                   placeholder="e.g., Remote Work Security Policy"
                 />
@@ -494,56 +600,69 @@ export default function CompliancePage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-gray-700">
-                    Category
+                    Category *
                   </label>
-                  <select className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20">
+                  <select
+                    value={newPolicy.category}
+                    onChange={(e) => setNewPolicy({ ...newPolicy, category: e.target.value })}
+                    className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
+                  >
                     {categories
                       .filter((c) => c !== 'All')
                       .map((c) => (
-                        <option key={c}>{c}</option>
+                        <option key={c} value={c}>{c}</option>
                       ))}
                   </select>
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-gray-700">
-                    Department
+                    Policy Type *
                   </label>
-                  <select className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20">
-                    <option>IT</option>
-                    <option>HR</option>
-                    <option>Finance</option>
-                    <option>Operations</option>
+                  <select
+                    value={newPolicy.type}
+                    onChange={(e) => setNewPolicy({ ...newPolicy, type: e.target.value })}
+                    className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
+                  >
+                    {policyTypes.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
                   </select>
                 </div>
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-medium text-gray-700">
-                  Description
+                  Department (leave empty for all departments)
                 </label>
-                <textarea
-                  className="h-24 w-full resize-none rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
-                  placeholder="Brief description of the policy..."
-                ></textarea>
+                <input
+                  type="text"
+                  value={newPolicy.department}
+                  onChange={(e) => setNewPolicy({ ...newPolicy, department: e.target.value })}
+                  className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
+                  placeholder="e.g., Engineering, HR, Finance"
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-medium text-gray-700">
-                  Upload Document
+                  Description *
                 </label>
-                <div className="flex w-full items-center justify-center">
-                  <label className="flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border/40 bg-gray-50 transition-colors hover:bg-gray-100">
-                    <div className="flex flex-col items-center justify-center pb-6 pt-5">
-                      <Download className="mb-3 h-8 w-8 text-muted-foreground" />
-                      <p className="mb-2 text-sm text-muted-foreground">
-                        <span className="font-semibold">Click to upload</span>{' '}
-                        or drag and drop
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        PDF, DOCX (MAX. 10MB)
-                      </p>
-                    </div>
-                    <input type="file" className="hidden" />
-                  </label>
-                </div>
+                <textarea
+                  value={newPolicy.description}
+                  onChange={(e) => setNewPolicy({ ...newPolicy, description: e.target.value })}
+                  className="h-24 w-full resize-none rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
+                  placeholder="Brief description of the policy..."
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-700">
+                  Review Frequency (days)
+                </label>
+                <input
+                  type="number"
+                  value={newPolicy.reviewFrequencyDays}
+                  onChange={(e) => setNewPolicy({ ...newPolicy, reviewFrequencyDays: parseInt(e.target.value) || 90 })}
+                  className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
+                  placeholder="90"
+                />
               </div>
             </div>
             <div className="flex items-center justify-end gap-3 rounded-b-xl border-t border-border/40 bg-gray-50/50 p-4">
@@ -554,10 +673,135 @@ export default function CompliancePage() {
                 Cancel
               </button>
               <button
-                onClick={() => setIsCreateModalOpen(false)}
+                onClick={handleCreatePolicy}
+                disabled={isSubmitting}
+                className="rounded-md bg-primary px-4 py-2 text-xs font-medium text-white shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                {isSubmitting ? 'Creating...' : 'Create Policy'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Submissions Modal */}
+      {isSubmissionsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-3xl rounded-xl bg-white shadow-2xl max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between border-b border-border/40 p-4">
+              <h3 className="text-lg font-medium text-gray-800">
+                Submissions for {selectedPolicy?.title}
+              </h3>
+              <button
+                onClick={() => setIsSubmissionsModalOpen(false)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <XCircle className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              {submissions.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Users className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                  <p>No submissions yet for this policy</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {submissions.map((sub) => (
+                    <div
+                      key={sub.id}
+                      className="rounded-lg border border-border/40 p-4 hover:border-primary/30 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-medium text-sm">
+                            {sub.userName?.substring(0, 2).toUpperCase() || '??'}
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-800">{sub.userName || 'Unknown User'}</p>
+                            <p className="text-xs text-muted-foreground">{sub.userEmail}</p>
+                            {sub.userDepartment && (
+                              <p className="text-xs text-muted-foreground">{sub.userDepartment}</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-medium ${sub.status === 'approved' ? 'bg-primary/10 text-primary' :
+                              sub.status === 'submitted' ? 'bg-amber-50 text-amber-700' :
+                                sub.status === 'rejected' ? 'bg-rose-50 text-rose-700' :
+                                  'bg-gray-100 text-gray-700'
+                            }`}>
+                            {sub.status}
+                          </span>
+                          {sub.submittedAt && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {new Date(sub.submittedAt).toLocaleDateString()}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {(sub.fileUrl || sub.acknowledged !== null) && (
+                        <div className="mt-3 pt-3 border-t border-border/40 flex items-center gap-4 text-xs">
+                          {sub.fileUrl && (
+                            <a
+                              href={sub.fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline flex items-center gap-1"
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                              View Document
+                            </a>
+                          )}
+                          {sub.acknowledged !== null && (
+                            <span className={sub.acknowledged ? 'text-primary' : 'text-muted-foreground'}>
+                              {sub.acknowledged ? '✓ Acknowledged' : '○ Not acknowledged'}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {sub.status === 'submitted' && (
+                        <div className="mt-3 pt-3 border-t border-border/40 flex items-center gap-2">
+                          <button
+                            onClick={() => handleReviewSubmission(sub.id, 'approved')}
+                            className="rounded-md bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5 inline mr-1" />
+                            Approve
+                          </button>
+                          <button
+                            onClick={() => {
+                              const notes = prompt('Enter rejection reason:');
+                              if (notes) handleReviewSubmission(sub.id, 'rejected', notes);
+                            }}
+                            className="rounded-md bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 transition-colors"
+                          >
+                            <XCircle className="h-3.5 w-3.5 inline mr-1" />
+                            Reject
+                          </button>
+                        </div>
+                      )}
+
+                      {sub.reviewNotes && (
+                        <div className="mt-3 pt-3 border-t border-border/40">
+                          <p className="text-xs text-muted-foreground">
+                            <strong>Review Notes:</strong> {sub.reviewNotes}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-3 rounded-b-xl border-t border-border/40 bg-gray-50/50 p-4">
+              <button
+                onClick={() => setIsSubmissionsModalOpen(false)}
                 className="rounded-md bg-primary px-4 py-2 text-xs font-medium text-white shadow-sm transition-colors hover:bg-primary/90"
               >
-                Create Policy
+                Close
               </button>
             </div>
           </div>
@@ -566,3 +810,4 @@ export default function CompliancePage() {
     </div>
   );
 }
+

@@ -6,7 +6,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 export async function POST(request: NextRequest) {
     try {
         const cookieStore = await cookies();
-        const token = cookieStore.get('auth-token')?.value;
+        const token = cookieStore.get('admin-auth-token')?.value;
 
         if (!token) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

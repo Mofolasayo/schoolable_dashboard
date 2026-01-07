@@ -8,54 +8,47 @@ import { useState } from 'react';
 
 import { dashboardNavigation } from '@/config/navigation';
 import { cn } from '@/lib/utils';
-import { useEffect } from 'react';
+// useEffect not needed - user passed from server
 import { WebSocketWrapper } from '@/lib/websocket-wrapper';
 import { logout } from '@/app/login/actions';
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
+  user?: {
+    id: string;
+    employeeId?: string | null;
+    email?: string | null;
+    fullName?: string | null;
+    role?: string | null;
+    gender?: string | null;
+    avatarUrl?: string | null;
+  } | null;
 };
 
 /**
  * Reusable dashboard shell that wires up sidebar and header navigation.
  * Downstream pages render inside the main content area.
  */
-export function DashboardLayout({ children }: DashboardLayoutProps) {
+export function DashboardLayout({ children, user: initialUser }: DashboardLayoutProps) {
   const pathname = usePathname();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [user, setUser] = useState<{
-    id: string;
-    email?: string | null;
-    fullName?: string | null;
-    role?: string | null;
-  } | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // Use passed user if available, default to null. Detailed fetching moved to server layout.
+  const user = initialUser;
+  // If user is provided, we aren't loading. If not provided and we expect it, handle accordingly.
+  // Since it's passed from server, we can treat loading as false immediately.
+  const [_isLoading, _setIsLoading] = useState(false);
 
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        // Read user info from cookie (set by login action)
-        const userInfoCookie = document.cookie
-          .split('; ')
-          .find(row => row.startsWith('user-info='));
-
-        if (userInfoCookie) {
-          const userInfo = JSON.parse(decodeURIComponent(userInfoCookie.split('=')[1]));
-          setUser({
-            id: userInfo.id,
-            email: userInfo.email,
-            fullName: userInfo.fullName,
-            role: userInfo.role,
-          });
-        }
-      } catch (e) {
-        console.error('Error parsing user info:', e);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchUser();
-  }, []);
+  // Generate avatar URL matching mobile app logic
+  const getAvatarUrl = (gender?: string | null, seed?: string | null) => {
+    const avatarSeed = seed || user?.employeeId || user?.email || 'Admin';
+    let style = 'bottts'; // Default for unspecified gender
+    if (gender?.toLowerCase() === 'male') {
+      style = 'adventurer';
+    } else if (gender?.toLowerCase() === 'female') {
+      style = 'adventurer-neutral';
+    }
+    return `https://api.dicebear.com/7.x/${style}/svg?seed=${avatarSeed}`;
+  };
 
 
   const toggleMobileNav = () => setMobileNavOpen((open) => !open);
@@ -201,7 +194,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               >
                 <HelpCircle className="h-5 w-5" />
               </button>
-              {isLoading ? (
+              {_isLoading ? (
                 <div className="ml-2 flex items-center gap-3 rounded-md border border-border/40 bg-white py-1.5 pl-2 pr-3">
                   <div className="h-7 w-7 animate-pulse rounded-full bg-slate-200" />
                   <div className="hidden flex-col items-start gap-1 md:flex">
@@ -215,16 +208,16 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                     className="ml-2 flex items-center gap-3 rounded-md border border-border/40 bg-white py-1.5 pl-2 pr-3 hover:bg-muted/50"
                   >
                     <img
-                      src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.fullName || user?.email || 'User'}`}
+                      src={user?.avatarUrl || getAvatarUrl(user?.gender, user?.employeeId)}
                       alt={user?.fullName || 'User'}
                       className="h-7 w-7 rounded-full object-cover ring-2 ring-gray-50"
                     />
                     <div className="hidden flex-col items-start text-left md:flex">
                       <span className="text-sm font-medium text-gray-700">
-                        {user?.fullName || user?.email || 'Loading...'}
+                        {user?.fullName || user?.email || 'Admin'}
                       </span>
                       <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                        {user?.role || 'Admin'}
+                        {user?.role === 'admin' ? 'Super Admin' : (user?.role || 'Admin')}
                       </span>
                     </div>
                     <ChevronDown className="hidden h-3 w-3 text-muted-foreground md:inline group-hover:rotate-180 transition-transform" />
@@ -238,7 +231,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                       onClick={() => setMobileNavOpen(false)}
                     >
                       <img
-                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.fullName || 'User'}`}
+                        src={user?.avatarUrl || getAvatarUrl(user?.gender, user?.employeeId)}
                         className="h-4 w-4 rounded-full"
                         alt=""
                       />

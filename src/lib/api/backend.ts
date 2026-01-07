@@ -305,6 +305,7 @@ export interface CreateTaskData {
   organization: string;
   priority: 'Low' | 'Medium' | 'High';
   dueDate: string | null;
+  dueTime?: string;
   tags: string[];
   subtasks: { title: string }[];
   attachments: { name: string; size: string; type: string; url: string; path: string }[];
@@ -589,6 +590,86 @@ export async function getPendingPeerFeedback(): Promise<StaffProfile[]> {
   return apiRequest<StaffProfile[]>('/api/performance/peer-feedback/pending');
 }
 
+// ==================== AUTO-CALCULATED AURA (Department KPIs) ====================
+
+export interface AutoSubMetric {
+  key: string;
+  displayName: string;
+  score: number;
+  source: string;
+  dataSource: string;
+  weightInPillar: number;
+  contribution: number;
+}
+
+export interface AutoPillarDetail {
+  name: string;
+  score: number;
+  weight: number;
+  contribution: number;
+  dataSource: string;
+  autoCalculatedCount?: number;
+  manualRatingCount?: number;
+  subMetrics: AutoSubMetric[];
+}
+
+export interface AutoAuraResponse {
+  employeeId: string;
+  employeeName: string;
+  department: string;
+  departmentProfile: string;
+  auraScore: number;
+  grade: string;
+  qgpa: number;
+  quarterStart: string;
+  automationRate: number;
+  calculatedAt: string;
+  pillars: Record<string, AutoPillarDetail>;
+}
+
+export interface DepartmentKpi {
+  key: string;
+  name: string;
+  automationRate: number;
+  totalMetrics: number;
+  autoMetrics: number;
+}
+
+export interface DepartmentKpisResponse {
+  departments: DepartmentKpi[];
+  message: string;
+}
+
+/**
+ * Get auto-calculated Aura dashboard (real-time calculation with department KPIs)
+ */
+export async function getAutoAuraDashboard(): Promise<AutoAuraResponse> {
+  return apiRequest<AutoAuraResponse>('/api/performance/my-aura/auto');
+}
+
+/**
+ * Get auto-calculated Aura for a specific employee
+ */
+export async function getEmployeeAutoAura(employeeId: string): Promise<AutoAuraResponse> {
+  return apiRequest<AutoAuraResponse>(`/api/performance/employee/${employeeId}/aura/auto`);
+}
+
+/**
+ * Get all available department KPI profiles
+ */
+export async function getDepartmentKpis(): Promise<DepartmentKpisResponse> {
+  return apiRequest<DepartmentKpisResponse>('/api/performance/department-kpis');
+}
+
+/**
+ * Trigger auto-recalculation for all employees (admin only)
+ */
+export async function triggerAutoRecalculation(): Promise<{ message: string; note: string }> {
+  return apiRequest<{ message: string; note: string }>('/api/performance/auto-recalculate', {
+    method: 'POST',
+  });
+}
+
 
 // Default export for convenient importing
 // ==================== TRAINING RECORDS ====================
@@ -659,6 +740,118 @@ export async function rejectCertificate(id: number, reason: string): Promise<{ s
   });
 }
 
+// ==================== COMPLIANCE ====================
+
+export interface CompliancePolicy {
+  id: string;
+  title: string;
+  category: string;
+  department: string | null;
+  description: string;
+  type: string; // policy, upload, training
+  status: string; // Compliant, At Risk, Non-Compliant
+  complianceRate: number;
+  staffCount: number;
+  nonCompliant: number;
+  lastReview: string | null;
+  nextReview: string | null;
+}
+
+export interface ComplianceMetrics {
+  overallComplianceRate: number;
+  totalPolicies: number;
+  compliantPolicies: number;
+  atRiskPolicies: number;
+  nonCompliantPolicies: number;
+}
+
+export interface ComplianceSubmission {
+  id: string;
+  status: string;
+  submittedAt: string | null;
+  fileUrl: string | null;
+  fileName: string | null;
+  acknowledged: boolean | null;
+  reviewNotes: string | null;
+  userName?: string;
+  userEmail?: string;
+  userDepartment?: string;
+}
+
+export interface CreatePolicyRequest {
+  title: string;
+  category: string;
+  department?: string;
+  description: string;
+  type: string;
+  deadline?: string;
+  reviewFrequencyDays?: number;
+}
+
+/**
+ * Get all compliance policies (Admin)
+ */
+export async function getCompliancePolicies(): Promise<CompliancePolicy[]> {
+  return apiRequest<CompliancePolicy[]>('/compliance/policies');
+}
+
+/**
+ * Get compliance metrics (Admin)
+ */
+export async function getComplianceMetrics(): Promise<ComplianceMetrics> {
+  return apiRequest<ComplianceMetrics>('/compliance/metrics');
+}
+
+/**
+ * Create a new compliance policy (Admin)
+ */
+export async function createCompliancePolicy(policy: CreatePolicyRequest): Promise<CompliancePolicy> {
+  return apiRequest<CompliancePolicy>('/compliance/policies', {
+    method: 'POST',
+    body: JSON.stringify(policy),
+  });
+}
+
+/**
+ * Update a compliance policy (Admin)
+ */
+export async function updateCompliancePolicy(id: string, policy: Partial<CreatePolicyRequest>): Promise<CompliancePolicy> {
+  return apiRequest<CompliancePolicy>(`/compliance/policies/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(policy),
+  });
+}
+
+/**
+ * Delete (deactivate) a compliance policy (Admin)
+ */
+export async function deleteCompliancePolicy(id: string): Promise<{ message: string }> {
+  return apiRequest<{ message: string }>(`/compliance/policies/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+/**
+ * Get submissions for a policy (Admin)
+ */
+export async function getComplianceSubmissions(policyId: string): Promise<ComplianceSubmission[]> {
+  return apiRequest<ComplianceSubmission[]>(`/compliance/policies/${policyId}/submissions`);
+}
+
+/**
+ * Review a submission - approve or reject (Admin)
+ */
+export async function reviewComplianceSubmission(
+  submissionId: string,
+  status: 'approved' | 'rejected',
+  notes?: string
+): Promise<{ message: string; status: string }> {
+  return apiRequest<{ message: string; status: string }>(`/compliance/submissions/${submissionId}/review`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status, notes }),
+  });
+}
+
 // Default export for convenient importing
 const backendApi = {
   login,
@@ -701,8 +894,101 @@ const backendApi = {
   getEmployeeCertificates,
   approveCertificate,
   rejectCertificate,
+  // Compliance
+  getCompliancePolicies,
+  getComplianceMetrics,
+  createCompliancePolicy,
+  updateCompliancePolicy,
+  deleteCompliancePolicy,
+  getComplianceSubmissions,
+  reviewComplianceSubmission,
   setAuthToken,
   getAuthToken,
 };
 
 export default backendApi;
+
+// ==================== TEAM KPIs & SCORES (Admin View) ====================
+
+export interface TeamKpi {
+  id: string;
+  teamLeadId: string;
+  department: string;
+  name: string;
+  description: string;
+  targetValue: number;
+  targetUnit: string;
+  weight: number;
+  quarter: string;
+  year: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface AiInsightItem {
+  id: string;
+  department: string;
+  weekNumber: number;
+  quarter: string;
+  year: number;
+  kpiScore: number;
+  summary: string;
+  insights: Record<string, unknown>;
+  recommendations: Record<string, unknown>;
+  riskAlerts: Record<string, unknown>;
+  generatedAt: string;
+}
+
+export interface TeamQuarterlyScore {
+  id: string;
+  teamName: string;
+  department: string;
+  quarter: string;
+  year: number;
+  kpiAchievementScore: number;
+  overallTeamScore: number;
+  grade: string;
+  aiSummary: string;
+}
+
+/**
+ * Get all team KPIs (admin view)
+ */
+export async function getAllTeamKpis(quarter?: string, year?: number): Promise<{
+  kpis: TeamKpi[];
+  quarter: string;
+  year: number;
+}> {
+  const params = new URLSearchParams();
+  if (quarter) params.set('quarter', quarter);
+  if (year) params.set('year', year.toString());
+  return apiRequest(`/api/kpi/all-kpis?${params.toString()}`);
+}
+
+/**
+ * Get all team quarterly scores (admin view)
+ */
+export async function getAllTeamScores(quarter?: string, year?: number): Promise<{
+  quarter: string;
+  year: number;
+  teams: TeamQuarterlyScore[];
+  totalTeams: number;
+  averageScore: number;
+}> {
+  const params = new URLSearchParams();
+  if (quarter) params.set('quarter', quarter);
+  if (year) params.set('year', year.toString());
+  return apiRequest(`/api/kpi/score/all-teams?${params.toString()}`);
+}
+
+/**
+ * Get all AI insights for a specific week (admin view)
+ */
+export async function getAllWeeklyInsights(weekNumber: number, year: number): Promise<{
+  insights: AiInsightItem[];
+  weekNumber: number;
+  year: number;
+}> {
+  return apiRequest(`/api/kpi/insights/all?weekNumber=${weekNumber}&year=${year}`);
+}
+
