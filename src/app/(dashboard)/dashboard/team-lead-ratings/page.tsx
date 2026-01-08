@@ -413,10 +413,29 @@ export default function TeamLeadRatingsPage() {
                         ))}
                     </div>
 
-                    {filteredTeamLeads.length === 0 && (
+                    {filteredTeamLeads.length === 0 && teamLeads.length === 0 && (
+                        <div className="flex flex-col items-center justify-center py-16 text-center rounded-xl border border-dashed border-gray-200 bg-gray-50/50">
+                            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-indigo-100">
+                                <Users className="h-8 w-8 text-indigo-600" />
+                            </div>
+                            <h3 className="mb-2 text-lg font-semibold text-gray-900">No Team Leads Yet</h3>
+                            <p className="mb-4 max-w-md text-sm text-gray-500">
+                                Team leads are assigned through HR Management. Once team leads are configured,
+                                they will appear here for weekly performance ratings.
+                            </p>
+                            <a
+                                href="/dashboard/hr-policy"
+                                className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                            >
+                                → Go to HR Management
+                            </a>
+                        </div>
+                    )}
+
+                    {filteredTeamLeads.length === 0 && teamLeads.length > 0 && (
                         <div className="text-center py-12">
                             <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                            <p className="text-gray-500">No team leads found</p>
+                            <p className="text-gray-500">No team leads match your search</p>
                         </div>
                     )}
                 </TabsContent>

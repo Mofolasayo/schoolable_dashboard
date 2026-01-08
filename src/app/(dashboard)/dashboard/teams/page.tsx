@@ -267,10 +267,29 @@ export default function TeamsOverviewPage() {
             </div>
 
             {teams.length === 0 && (
-                <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-border/40 bg-white">
-                    <UserGroupIcon className="h-12 w-12 text-muted-foreground/30" />
-                    <p className="mt-4 text-sm text-muted-foreground">No team data available for this quarter</p>
-                </div>
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/60 bg-muted/30 py-16"
+                >
+                    <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+                        <UserGroupIcon className="h-8 w-8 text-primary" />
+                    </div>
+                    <h3 className="mb-2 text-lg font-semibold text-foreground">No Team Data Yet</h3>
+                    <p className="mb-4 max-w-md text-center text-sm text-muted-foreground">
+                        Team performance data for {selectedQuarter} {selectedYear} is not available yet.
+                        Teams are created automatically when team leads are assigned and KPIs are configured.
+                    </p>
+                    <div className="flex items-center gap-3 text-sm">
+                        <a href="/dashboard/hr-policy" className="text-primary hover:underline">
+                            → Configure Team Leads
+                        </a>
+                        <span className="text-muted-foreground">|</span>
+                        <a href="/dashboard/settings" className="text-primary hover:underline">
+                            → Set Up KPIs
+                        </a>
+                    </div>
+                </motion.div>
             )}
 
             {/* Team Detail Modal */}
