@@ -169,131 +169,157 @@ export default function AiInsightsOverviewPage() {
 
             {/* Insights List */}
             <div className="space-y-4">
-                {insights.map((insight, index) => (
+                {insights.length === 0 ? (
                     <motion.div
-                        key={insight.id}
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                        className={`rounded-xl border bg-white shadow-sm transition-all ${expandedInsight === insight.id ? 'border-primary/40' : 'border-border/40'
-                            }`}
+                        className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/60 bg-muted/30 py-16"
                     >
-                        {/* Insight Header */}
-                        <div
-                            onClick={() => setExpandedInsight(expandedInsight === insight.id ? null : insight.id)}
-                            className="flex cursor-pointer items-center justify-between p-5"
-                        >
-                            <div className="flex items-center gap-4">
-                                <div className={`flex h-12 w-12 items-center justify-center rounded-xl border ${getScoreBgColor(insight.kpiScore)}`}>
-                                    <span className={`text-lg font-bold ${getScoreColor(insight.kpiScore)}`}>
-                                        {insight.kpiScore.toFixed(0)}
-                                    </span>
-                                </div>
-                                <div>
-                                    <h3 className="font-semibold text-foreground">{insight.department}</h3>
-                                    <p className="text-xs text-muted-foreground">
-                                        Week {insight.weekNumber} • {insight.quarter} {insight.year}
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                <span className="text-xs text-muted-foreground">
-                                    {new Date(insight.generatedAt).toLocaleDateString()}
-                                </span>
-                                <ChevronDownIcon
-                                    className={`h-5 w-5 text-muted-foreground transition-transform ${expandedInsight === insight.id ? 'rotate-180' : ''
-                                        }`}
-                                />
-                            </div>
+                        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+                            <SparklesIcon className="h-8 w-8 text-primary" />
                         </div>
-
-                        {/* Expanded Content */}
-                        {expandedInsight === insight.id && (
-                            <motion.div
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: 'auto' }}
-                                exit={{ opacity: 0, height: 0 }}
-                                className="border-t border-border/40 p-5"
+                        <h3 className="mb-2 text-lg font-semibold text-foreground">No AI Insights Yet</h3>
+                        <p className="mb-4 max-w-md text-center text-sm text-muted-foreground">
+                            AI-generated performance insights for Week {selectedWeek} are not available yet.
+                            Insights are generated automatically based on employee KPI data and performance metrics.
+                        </p>
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => setSelectedWeek(Math.max(1, selectedWeek - 1))}
+                                className="flex items-center gap-2 rounded-lg border border-border/40 bg-white px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
                             >
-                                {/* Summary */}
-                                <div className="mb-4 rounded-lg bg-gray-50 p-4">
-                                    <p className="text-sm text-foreground">{insight.summary}</p>
-                                </div>
-
-                                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                                    {/* Top Performing */}
-                                    {insight.insights && 'topPerforming' in insight.insights && (
-                                        <div className="rounded-lg border border-green-200 bg-green-50/50 p-4">
-                                            <div className="mb-2 flex items-center gap-2 text-green-600">
-                                                <CheckCircleIcon className="h-4 w-4" />
-                                                <span className="text-xs font-semibold">Top Performing</span>
-                                            </div>
-                                            <ul className="space-y-1">
-                                                {(insight.insights.topPerforming as string[] || []).slice(0, 3).map((item, i) => (
-                                                    <li key={i} className="text-xs text-foreground">• {item}</li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    )}
-
-                                    {/* Needs Attention */}
-                                    {insight.insights && 'needsAttention' in insight.insights && (
-                                        <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4">
-                                            <div className="mb-2 flex items-center gap-2 text-amber-600">
-                                                <ExclamationTriangleIcon className="h-4 w-4" />
-                                                <span className="text-xs font-semibold">Needs Attention</span>
-                                            </div>
-                                            <ul className="space-y-1">
-                                                {(insight.insights.needsAttention as string[] || []).slice(0, 3).map((item, i) => (
-                                                    <li key={i} className="text-xs text-foreground">• {item}</li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    )}
-
-                                    {/* Recommendations */}
-                                    {insight.recommendations && 'items' in insight.recommendations && (
-                                        <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-4">
-                                            <div className="mb-2 flex items-center gap-2 text-blue-600">
-                                                <LightBulbIcon className="h-4 w-4" />
-                                                <span className="text-xs font-semibold">Recommendations</span>
-                                            </div>
-                                            <ul className="space-y-1">
-                                                {(insight.recommendations.items as string[] || []).slice(0, 3).map((item, i) => (
-                                                    <li key={i} className="text-xs text-foreground">• {item}</li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Risk Alerts */}
-                                {insight.riskAlerts && 'items' in insight.riskAlerts && (insight.riskAlerts.items as string[] || []).length > 0 && (
-                                    <div className="mt-4 rounded-lg border border-red-200 bg-red-50/50 p-4">
-                                        <div className="mb-2 flex items-center gap-2 text-red-600">
-                                            <ExclamationTriangleIcon className="h-4 w-4" />
-                                            <span className="text-xs font-semibold">Risk Alerts</span>
-                                        </div>
-                                        <ul className="space-y-1">
-                                            {(insight.riskAlerts.items as string[] || []).map((item, i) => (
-                                                <li key={i} className="text-xs text-foreground">• {item}</li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                )}
-                            </motion.div>
-                        )}
+                                View Previous Week
+                            </button>
+                            <button
+                                onClick={fetchInsights}
+                                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary/90"
+                            >
+                                <ArrowPathIcon className="h-4 w-4" />
+                                Refresh
+                            </button>
+                        </div>
                     </motion.div>
-                ))}
+                ) : (
+                    insights.map((insight, index) => (
+                        <motion.div
+                            key={insight.id}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: index * 0.05 }}
+                            className={`rounded-xl border bg-white shadow-sm transition-all ${expandedInsight === insight.id ? 'border-primary/40' : 'border-border/40'
+                                }`}
+                        >
+                            {/* Insight Header */}
+                            <div
+                                onClick={() => setExpandedInsight(expandedInsight === insight.id ? null : insight.id)}
+                                className="flex cursor-pointer items-center justify-between p-5"
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className={`flex h-12 w-12 items-center justify-center rounded-xl border ${getScoreBgColor(insight.kpiScore)}`}>
+                                        <span className={`text-lg font-bold ${getScoreColor(insight.kpiScore)}`}>
+                                            {insight.kpiScore.toFixed(0)}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <h3 className="font-semibold text-foreground">{insight.department}</h3>
+                                        <p className="text-xs text-muted-foreground">
+                                            Week {insight.weekNumber} • {insight.quarter} {insight.year}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <span className="text-xs text-muted-foreground">
+                                        {new Date(insight.generatedAt).toLocaleDateString()}
+                                    </span>
+                                    <ChevronDownIcon
+                                        className={`h-5 w-5 text-muted-foreground transition-transform ${expandedInsight === insight.id ? 'rotate-180' : ''
+                                            }`}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Expanded Content */}
+                            {expandedInsight === insight.id && (
+                                <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: 'auto' }}
+                                    exit={{ opacity: 0, height: 0 }}
+                                    className="border-t border-border/40 p-5"
+                                >
+                                    {/* Summary */}
+                                    <div className="mb-4 rounded-lg bg-gray-50 p-4">
+                                        <p className="text-sm text-foreground">{insight.summary}</p>
+                                    </div>
+
+                                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                                        {/* Top Performing */}
+                                        {insight.insights && 'topPerforming' in insight.insights && (
+                                            <div className="rounded-lg border border-green-200 bg-green-50/50 p-4">
+                                                <div className="mb-2 flex items-center gap-2 text-green-600">
+                                                    <CheckCircleIcon className="h-4 w-4" />
+                                                    <span className="text-xs font-semibold">Top Performing</span>
+                                                </div>
+                                                <ul className="space-y-1">
+                                                    {(insight.insights.topPerforming as string[] || []).slice(0, 3).map((item, i) => (
+                                                        <li key={i} className="text-xs text-foreground">• {item}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+
+                                        {/* Needs Attention */}
+                                        {insight.insights && 'needsAttention' in insight.insights && (
+                                            <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4">
+                                                <div className="mb-2 flex items-center gap-2 text-amber-600">
+                                                    <ExclamationTriangleIcon className="h-4 w-4" />
+                                                    <span className="text-xs font-semibold">Needs Attention</span>
+                                                </div>
+                                                <ul className="space-y-1">
+                                                    {(insight.insights.needsAttention as string[] || []).slice(0, 3).map((item, i) => (
+                                                        <li key={i} className="text-xs text-foreground">• {item}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+
+                                        {/* Recommendations */}
+                                        {insight.recommendations && 'items' in insight.recommendations && (
+                                            <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-4">
+                                                <div className="mb-2 flex items-center gap-2 text-blue-600">
+                                                    <LightBulbIcon className="h-4 w-4" />
+                                                    <span className="text-xs font-semibold">Recommendations</span>
+                                                </div>
+                                                <ul className="space-y-1">
+                                                    {(insight.recommendations.items as string[] || []).slice(0, 3).map((item, i) => (
+                                                        <li key={i} className="text-xs text-foreground">• {item}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Risk Alerts */}
+                                    {insight.riskAlerts && 'items' in insight.riskAlerts && (insight.riskAlerts.items as string[] || []).length > 0 && (
+                                        <div className="mt-4 rounded-lg border border-red-200 bg-red-50/50 p-4">
+                                            <div className="mb-2 flex items-center gap-2 text-red-600">
+                                                <ExclamationTriangleIcon className="h-4 w-4" />
+                                                <span className="text-xs font-semibold">Risk Alerts</span>
+                                            </div>
+                                            <ul className="space-y-1">
+                                                {(insight.riskAlerts.items as string[] || []).map((item, i) => (
+                                                    <li key={i} className="text-xs text-foreground">• {item}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </motion.div>
+                            )}
+                        </motion.div>
+                    ))
+                )}
             </div>
 
-            {insights.length === 0 && (
-                <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-border/40 bg-white">
-                    <SparklesIcon className="h-12 w-12 text-muted-foreground/30" />
-                    <p className="mt-4 text-sm text-muted-foreground">No AI insights available for this week</p>
-                    <p className="text-xs text-muted-foreground">Try selecting a different week or generate new insights from team dashboards</p>
-                </div>
-            )}
+
         </div>
     );
 }
