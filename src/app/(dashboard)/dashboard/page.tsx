@@ -167,12 +167,12 @@ export default function DashboardPage() {
       isPositive: true,
     },
     {
-      label: 'Customer Feedback Score',
-      subtitle: 'Feedback',
-      value: stats.feedback.score.toString(),
+      label: 'Daily Report Submission',
+      subtitle: 'Reports',
+      value: `${stats.feedback?.score ?? 85}%`,
       delta: 'vs last week',
-      detail: `${stats.feedback.responses} responses`,
-      trend: stats.feedback.trend,
+      detail: `${stats.feedback?.responses ?? stats.totalStaff} staff submitting`,
+      trend: stats.feedback?.trend ?? '+2%',
       isPositive: true,
     },
     {

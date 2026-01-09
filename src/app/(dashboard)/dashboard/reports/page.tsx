@@ -826,32 +826,15 @@ export default function ReportsPage() {
                 <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4">
                   <h3 className="font-bold text-blue-800 mb-2 flex items-center gap-2">
                     <Target className="h-4 w-4" />
-                    KPI Score (Department Level)
+                    Team KPI Score (Department Level)
                   </h3>
                   <p className="mb-2">
-                    The <strong>KPI Score</strong> measures how well a team achieves its Key Performance Indicators. These are specific, measurable targets set for each department.
+                    Measures how well a team achieves its Key Performance Indicators. Team Leads define KPIs and report progress weekly.
                   </p>
                   <ul className="list-disc list-inside space-y-1 text-blue-700">
-                    <li>Each KPI has a target value and weight</li>
-                    <li>Achievement is calculated as (Actual / Target × 100)</li>
-                    <li>Weighted average of all KPIs = Final KPI Score</li>
-                  </ul>
-                </div>
-
-                {/* Team Score */}
-                <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
-                  <h3 className="font-bold text-indigo-800 mb-2 flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4" />
-                    Team Score
-                  </h3>
-                  <p className="mb-2">
-                    The <strong>Team Score</strong> is a comprehensive metric that combines multiple factors:
-                  </p>
-                  <ul className="list-disc list-inside space-y-1 text-indigo-700">
-                    <li><strong>KPI Achievement (40%)</strong> - How well team KPIs are met</li>
-                    <li><strong>Task Completion (30%)</strong> - Ratio of completed vs assigned tasks</li>
-                    <li><strong>Attendance (15%)</strong> - Team member attendance rate</li>
-                    <li><strong>Quality Rating (15%)</strong> - Average quality score on completed tasks</li>
+                    <li>Each KPI has a target value and weight (total = 100%)</li>
+                    <li>Achievement = (Actual / Target × 100)</li>
+                    <li>Team Score = Weighted average of all KPI achievements</li>
                   </ul>
                 </div>
 
@@ -862,14 +845,17 @@ export default function ReportsPage() {
                     AURA Score (Individual Level)
                   </h3>
                   <p className="mb-2">
-                    The <strong>AURA Score</strong> (Automated Universal Rating Assessment) is an individual performance metric based on 5 pillars:
+                    The <strong>AURA Score</strong> (Automated Universal Rating Assessment) is an individual performance metric based on 4 pillars:
                   </p>
                   <ul className="list-disc list-inside space-y-1 text-purple-700">
-                    <li><strong>Technical (25%)</strong> - Skills and task quality</li>
-                    <li><strong>Behavioral (25%)</strong> - Attendance, teamwork, adaptability</li>
-                    <li><strong>Culture Fit (25%)</strong> - Values alignment, attitude, integrity</li>
-                    <li><strong>Growth & Learning (25%)</strong> - Training, certifications, improvement</li>
+                    <li><strong>Technical Competence (35%)</strong> - Daily reports, task performance, KPI achievement</li>
+                    <li><strong>Behavioral (25%)</strong> - Attendance, punctuality, consistency, peer helpfulness</li>
+                    <li><strong>Culture Fit (20%)</strong> - Policy compliance, values alignment</li>
+                    <li><strong>Growth & Learning (20%)</strong> - Training, certifications, improvement trend</li>
                   </ul>
+                  <p className="mt-2 text-xs text-purple-600">
+                    ~80% auto-calculated from system data, ~19% from Team Lead ratings, ~1% peer ratings
+                  </p>
                 </div>
 
                 {/* Grade System */}
@@ -895,7 +881,7 @@ export default function ReportsPage() {
                       <span className="w-8 h-6 rounded bg-orange-100 text-orange-700 text-xs font-bold flex items-center justify-center">D</span>
                       <span>60-69% (Needs Improvement)</span>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 col-span-2">
                       <span className="w-8 h-6 rounded bg-red-100 text-red-700 text-xs font-bold flex items-center justify-center">F</span>
                       <span>&lt;60% (Performance Alert)</span>
                     </div>
