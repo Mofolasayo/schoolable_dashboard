@@ -243,6 +243,7 @@ export default function TaskManagementPage() {
   const [selectedPriority, setSelectedPriority] = useState<
     TaskPriority | 'All'
   >('All');
+  const [selectedTeam, setSelectedTeam] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
@@ -326,12 +327,16 @@ export default function TaskManagementPage() {
       selectedStatus === 'All' || task.status === selectedStatus;
     const matchesPriority =
       selectedPriority === 'All' || task.priority === selectedPriority;
+    const matchesTeam =
+      selectedTeam === 'All' ||
+      task.organization?.toLowerCase() === selectedTeam.toLowerCase() ||
+      task.assignee?.department?.toLowerCase() === selectedTeam.toLowerCase();
     const matchesSearch =
       searchQuery === '' ||
       task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       task.description.toLowerCase().includes(searchQuery.toLowerCase());
 
-    return matchesStatus && matchesPriority && matchesSearch;
+    return matchesStatus && matchesPriority && matchesTeam && matchesSearch;
   });
 
   const selectedTask = selectedTaskId
@@ -504,6 +509,24 @@ export default function TaskManagementPage() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Team Filter */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                Team:
+              </span>
+              <select
+                value={selectedTeam}
+                onChange={(e) => setSelectedTeam(e.target.value)}
+                className="rounded-lg border border-border/40 bg-white px-3 py-1.5 text-xs font-medium outline-none transition-colors focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
+              >
+                {departments.map((dept) => (
+                  <option key={dept} value={dept}>
+                    {dept}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
@@ -1647,7 +1670,7 @@ export default function TaskManagementPage() {
                       <p className="text-xs text-gray-800">
                         Task created by{' '}
                         <span className="font-medium">
-                          {userProfile?.full_name}
+                          {(selectedTask as any).creator?.name || 'Admin'}
                         </span>
                       </p>
                       <p className="mt-0.5 text-[10px] text-muted-foreground">

@@ -14,6 +14,9 @@ async function getAuthToken(): Promise<string | null> {
   return token;
 }
 
+// Super Admin avatar seed for consistent identity
+const SUPER_ADMIN_AVATAR_SEED = 'schoolable-super-admin-2026';
+
 // Helper to generate avatar URL
 function generateAvatarUrl(profile: {
   gender?: string | null;
@@ -21,8 +24,15 @@ function generateAvatarUrl(profile: {
   email?: string | null;
   full_name?: string | null;
   avatar_url?: string | null;
+  role?: string | null;
 }): string {
   if (profile.avatar_url) return profile.avatar_url;
+
+  // Check if this is a super admin
+  const role = profile.role?.toLowerCase() || '';
+  if (role === 'admin' || role === 'super_admin' || role === 'superadmin') {
+    return `https://api.dicebear.com/7.x/personas/svg?seed=${SUPER_ADMIN_AVATAR_SEED}&backgroundColor=c0aede`;
+  }
 
   const gender = profile.gender?.toLowerCase();
   let style = 'bottts';
@@ -36,6 +46,7 @@ function generateAvatarUrl(profile: {
 // Transform backend response to frontend Task type
 function transformTask(t: Record<string, unknown>): Task {
   const assignee = t.assignee as Record<string, unknown> | null;
+  const creator = t.creator as Record<string, unknown> | null;
   const subtasks = (t.subtasks as Array<Record<string, unknown>>) || [];
   const comments = (t.comments as Array<Record<string, unknown>>) || [];
   const attachments = (t.attachments as Array<Record<string, unknown>>) || [];
@@ -53,8 +64,25 @@ function transformTask(t: Record<string, unknown>): Task {
         employee_id: assignee?.employee_id as string,
         email: assignee?.email as string,
         full_name: assignee?.full_name as string,
+        role: assignee?.role as string,
       }),
       department: (assignee?.department as string) || (t.organization as string) || '',
+    },
+    creator: creator ? {
+      id: creator?.id as string,
+      name: (creator?.full_name as string) || 'Admin',
+      avatar: generateAvatarUrl({
+        avatar_url: creator?.avatar_url as string,
+        gender: creator?.gender as string,
+        employee_id: creator?.employee_id as string,
+        email: creator?.email as string,
+        full_name: creator?.full_name as string,
+        role: creator?.role as string,
+      }),
+    } : {
+      id: undefined,
+      name: 'Admin',
+      avatar: `https://api.dicebear.com/7.x/personas/svg?seed=${SUPER_ADMIN_AVATAR_SEED}&backgroundColor=c0aede`,
     },
     organization: (t.organization as string) || (assignee?.department as string) || '',
     priority: (t.priority as Task['priority']) || 'Medium',
@@ -86,6 +114,7 @@ function transformTask(t: Record<string, unknown>): Task {
           employee_id: author?.employee_id as string,
           email: author?.email as string,
           full_name: author?.full_name as string,
+          role: author?.role as string,
         }),
         text: c.content as string,
         timestamp: c.created_at as string,

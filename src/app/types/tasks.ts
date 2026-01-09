@@ -8,6 +8,11 @@ export type Task = {
     avatar: string;
     department: string;
   };
+  creator?: {
+    id?: string;
+    name: string;
+    avatar: string;
+  };
   organization: string;
   priority: 'Low' | 'Medium' | 'High';
   status: 'Pending' | 'In Progress' | 'Completed' | 'Overdue';
