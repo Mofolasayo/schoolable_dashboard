@@ -2,21 +2,17 @@
 /* eslint-disable @next/next/no-img-element */
 
 import {
-  Download,
-  Filter as _Filter,
   Search,
-  ArrowUpDown,
   Loader2,
   AlertCircle,
   RefreshCw,
   TrendingUp,
   TrendingDown,
-  Calendar,
-  X,
   ChevronLeft,
   ChevronRight,
+  Sparkles,
+  Star,
 } from 'lucide-react';
-import { toast } from 'sonner';
 import {
   PieChart,
   Pie,
@@ -37,9 +33,18 @@ import {
   type DashboardStats,
   type StaffWithPerformance,
 } from '@/app/actions/dashboard';
+import {
+  TimeRangeSelector,
+  CustomDateRangePicker,
+  type TimeRange,
+} from '@/components/filters/TimeRangeSelector';
 
-type TimeRange = 'today' | 'week' | 'month' | 'custom';
-type KpiFilter = 'overall' | 'completion' | 'attendance' | 'compliance' | 'feedback';
+type KpiFilter =
+  | 'overall'
+  | 'completion'
+  | 'attendance'
+  | 'compliance'
+  | 'feedback';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -56,54 +61,23 @@ export default function DashboardPage() {
   const pageSize = 10;
 
   // Custom date range state
-  const [_showDatePicker, _setShowDatePicker] = useState(false);
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
-  // Export CSV function
-  const exportToCSV = () => {
-    if (!stats || staff.length === 0) {
-      toast.error('No data to export');
+  const fetchData = useCallback(async () => {
+    if (timeRange === 'custom' && (!customStartDate || !customEndDate)) {
       return;
     }
 
-    // Build CSV content
-    const headers = ['Name', 'Department', 'Role', 'Weekly KPI', 'Task Status', 'Tasks Completed', 'Tasks Pending'];
-    const rows = staff.map(member => [
-      member.full_name,
-      member.department || 'N/A',
-      member.job_title || 'Staff',
-      member.weeklyKpi !== null ? `${member.weeklyKpi}%` : 'N/A',
-      member.taskStatus || 'N/A',
-      member.tasksCompleted,
-      member.tasksPending,
-    ]);
-
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-    ].join('\n');
-
-    // Download file
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `staff_performance_${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-
-    toast.success('Report exported successfully!');
-  };
-
-  const fetchData = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
       const [statsData, staffData] = await Promise.all([
-        getDashboardStats(),
+        getDashboardStats({
+          timeRange,
+          startDate: customStartDate,
+          endDate: customEndDate,
+        }),
         getStaffWithPerformance(),
       ]);
       setStats(statsData);
@@ -113,82 +87,94 @@ export default function DashboardPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [timeRange, customStartDate, customEndDate]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
   // Filter staff based on search
-  const filteredStaff = staff.filter(member =>
-    member.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (member.department?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-    (member.job_title?.toLowerCase() || '').includes(searchQuery.toLowerCase())
+  const filteredStaff = staff.filter(
+    (member) =>
+      member.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (member.department?.toLowerCase() || '').includes(
+        searchQuery.toLowerCase()
+      ) ||
+      (member.job_title?.toLowerCase() || '').includes(
+        searchQuery.toLowerCase()
+      )
   );
 
   // Get the line data key based on filter
   const getLineDataKey = () => {
     switch (kpiFilter) {
-      case 'completion': return 'completion';
-      case 'attendance': return 'attendance';
-      case 'compliance': return 'compliance';
-      case 'feedback': return 'feedback';
-      default: return 'overall';
+      case 'completion':
+        return 'completion';
+      case 'attendance':
+        return 'attendance';
+      case 'compliance':
+        return 'compliance';
+      case 'feedback':
+        return 'feedback';
+      default:
+        return 'overall';
     }
   };
 
   // Build metrics array from live data
-  const metrics = stats ? [
-    {
-      label: 'Task Completion Score',
-      subtitle: 'Tasks',
-      value: `${stats.taskCompletion.score}%`,
-      delta: 'vs last week',
-      detail: `${stats.taskCompletion.total} tasks total`,
-      trend: stats.taskCompletion.trend,
-      isPositive: true,
-    },
-    {
-      label: 'Attendance Score',
-      subtitle: 'Attendance',
-      value: `${stats.attendance.score}%`,
-      delta: 'vs last week',
-      detail: `${stats.attendance.total} staff tracked`,
-      trend: stats.attendance.trend,
-      isPositive: true,
-    },
-    {
-      label: 'Compliance Score',
-      subtitle: 'Compliance',
-      value: `${stats.compliance.score}%`,
-      delta: 'vs last week',
-      detail: `${stats.compliance.openIssues} open issues`,
-      trend: stats.compliance.trend,
-      isPositive: true,
-    },
-    {
-      label: 'Daily Report Submission',
-      subtitle: 'Reports',
-      value: `${stats.feedback?.score ?? 85}%`,
-      delta: 'vs last week',
-      detail: `${stats.feedback?.responses ?? stats.totalStaff} staff submitting`,
-      trend: stats.feedback?.trend ?? '+2%',
-      isPositive: true,
-    },
-    {
-      label: 'Overall KPI Rating',
-      subtitle: 'Composite',
-      value: stats.overallKpi.score.toString(),
-      delta: 'vs last week',
-      detail: 'Weighted across all KPIs',
-      trend: stats.overallKpi.trend,
-      isPositive: true,
-    },
-  ] : [];
+  const metrics = stats
+    ? [
+        {
+          label: 'Task Completion Score',
+          subtitle: 'Tasks',
+          value: `${stats.taskCompletion.score}%`,
+          delta: 'vs last week',
+          detail: `${stats.taskCompletion.total} tasks total`,
+          trend: stats.taskCompletion.trend,
+          isPositive: true,
+        },
+        {
+          label: 'Attendance Score',
+          subtitle: 'Attendance',
+          value: `${stats.attendance.score}%`,
+          delta: 'vs last week',
+          detail: `${stats.attendance.total} staff tracked`,
+          trend: stats.attendance.trend,
+          isPositive: true,
+        },
+        {
+          label: 'Compliance Score',
+          subtitle: 'Compliance',
+          value: `${stats.compliance.score}%`,
+          delta: 'vs last week',
+          detail: `${stats.compliance.openIssues} open issues`,
+          trend: stats.compliance.trend,
+          isPositive: true,
+        },
+        {
+          label: 'Daily Report Submission',
+          subtitle: 'Reports',
+          value: `${stats.feedback?.score ?? 85}%`,
+          delta: 'vs last week',
+          detail: `${stats.feedback?.responses ?? stats.totalStaff} staff submitting`,
+          trend: stats.feedback?.trend ?? '+2%',
+          isPositive: true,
+        },
+        {
+          label: 'Overall KPI Rating',
+          subtitle: 'Composite',
+          value: `${stats.overallKpi.score}%`,
+          delta: 'vs last week',
+          detail: 'Weighted across all KPIs',
+          trend: stats.overallKpi.trend,
+          isPositive: true,
+        },
+      ]
+    : [];
 
   if (isLoading && !stats) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex min-h-[400px] items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <p className="text-sm text-muted-foreground">Loading dashboard...</p>
@@ -208,95 +194,50 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 rounded-md border border-border/40 bg-white p-1">
-            {(['today', 'week', 'month', 'custom'] as TimeRange[]).map((range) => (
-              <button
-                key={range}
-                onClick={() => setTimeRange(range)}
-                className={`rounded px-3 py-1 text-xs font-medium transition-colors ${timeRange === range
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                  }`}
-              >
-                {range.charAt(0).toUpperCase() + range.slice(1)}
-              </button>
-            ))}
-          </div>
+          <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
           <button
             onClick={fetchData}
             disabled={isLoading}
             className="flex items-center gap-2 rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:opacity-50"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`}
+            />
             Refresh
-          </button>
-          <button
-            onClick={exportToCSV}
-            className="flex items-center gap-2 rounded-md border border-border/40 bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-          >
-            <Download className="h-3.5 w-3.5" />
-            Export CSV
           </button>
         </div>
       </div>
 
       {/* Custom Date Range Picker */}
       {timeRange === 'custom' && (
-        <div className="flex items-center gap-4 rounded-lg border border-border/40 bg-white p-4">
-          <Calendar className="h-4 w-4 text-muted-foreground" />
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-muted-foreground">From:</label>
-            <input
-              type="date"
-              value={customStartDate}
-              onChange={(e) => setCustomStartDate(e.target.value)}
-              className="rounded-md border border-border/40 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-muted-foreground">To:</label>
-            <input
-              type="date"
-              value={customEndDate}
-              onChange={(e) => setCustomEndDate(e.target.value)}
-              className="rounded-md border border-border/40 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
-          <button
-            onClick={fetchData}
-            disabled={!customStartDate || !customEndDate}
-            className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 disabled:opacity-50"
-          >
-            Apply
-          </button>
-          <button
-            onClick={() => {
-              setTimeRange('week');
-              setCustomStartDate('');
-              setCustomEndDate('');
-            }}
-            className="rounded-md border border-border/40 bg-white p-1.5 text-muted-foreground hover:bg-muted/50"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        <CustomDateRangePicker
+          startDate={customStartDate}
+          endDate={customEndDate}
+          onStartDateChange={setCustomStartDate}
+          onEndDateChange={setCustomEndDate}
+          onApply={fetchData}
+          onReset={() => {
+            setTimeRange('week');
+            setCustomStartDate('');
+            setCustomEndDate('');
+          }}
+          applyDisabled={!customStartDate || !customEndDate}
+        />
       )}
 
       {/* Error Banner */}
-      {
-        error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4 flex items-center gap-3">
-            <AlertCircle className="h-5 w-5 text-red-500" />
-            <p className="text-sm text-red-700">{error}</p>
-            <button
-              onClick={fetchData}
-              className="ml-auto text-sm font-medium text-red-700 hover:underline"
-            >
-              Retry
-            </button>
-          </div>
-        )
-      }
+      {error && (
+        <div className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
+          <AlertCircle className="h-5 w-5 text-red-500" />
+          <p className="text-sm text-red-700">{error}</p>
+          <button
+            onClick={fetchData}
+            className="ml-auto text-sm font-medium text-red-700 hover:underline"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Metrics Grid - Full Width */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -319,8 +260,11 @@ export default function DashboardPage() {
               {metric.value}
             </p>
             <div className="flex items-center gap-2 text-xs">
-              <span className={`flex items-center gap-1 font-medium ${metric.isPositive ? 'text-emerald-600' : 'text-red-600'
-                }`}>
+              <span
+                className={`flex items-center gap-1 font-medium ${
+                  metric.isPositive ? 'text-emerald-600' : 'text-red-600'
+                }`}
+              >
                 {metric.isPositive ? (
                   <TrendingUp className="h-3 w-3" />
                 ) : (
@@ -334,6 +278,27 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+
+      <button
+        type="button"
+        onClick={() => router.push('/dashboard/ai-insights')}
+        className="group flex w-full items-center justify-between rounded-xl border border-border/40 bg-primary/5 px-6 py-4 text-left shadow-sm transition-all hover:bg-primary/10"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-primary/20 bg-white text-primary">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-800">
+              AI Team Insights
+            </p>
+            <p className="text-xs text-muted-foreground">
+              View the latest weekly insights for every team.
+            </p>
+          </div>
+        </div>
+        <span className="text-xs font-medium text-primary">View insights</span>
+      </button>
 
       {/* Main Grid Layout */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_400px]">
@@ -350,22 +315,31 @@ export default function DashboardPage() {
                   Track KPI performance over time
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              {/* <div className="flex items-center gap-2">
                 <span className="text-[10px] text-muted-foreground">
                   Updated just now
                 </span>
-              </div>
+              </div> */}
             </div>
 
             <div className="mb-6 flex flex-wrap items-center gap-2">
-              {(['overall', 'completion', 'attendance', 'compliance', 'feedback'] as KpiFilter[]).map((filter) => (
+              {(
+                [
+                  'overall',
+                  'completion',
+                  'attendance',
+                  'compliance',
+                  'feedback',
+                ] as KpiFilter[]
+              ).map((filter) => (
                 <button
                   key={filter}
                   onClick={() => setKpiFilter(filter)}
-                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${kpiFilter === filter
-                    ? 'bg-primary text-white shadow-sm'
-                    : 'border border-border/40 bg-white text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                    }`}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    kpiFilter === filter
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'border border-border/40 bg-white text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                  }`}
                 >
                   {filter.charAt(0).toUpperCase() + filter.slice(1)}
                 </button>
@@ -428,7 +402,7 @@ export default function DashboardPage() {
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="flex items-center justify-center h-full text-muted-foreground">
+                <div className="flex h-full items-center justify-center text-muted-foreground">
                   No trend data available
                 </div>
               )}
@@ -444,7 +418,7 @@ export default function DashboardPage() {
                     Staff Performance
                   </h2>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Weekly KPIs, task and attendance status
+                    Task status and KPI change
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -458,10 +432,10 @@ export default function DashboardPage() {
                       className="h-9 w-48 rounded-lg border border-border/40 bg-white pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
                     />
                   </div>
-                  <button className="flex items-center gap-2 rounded-md border border-border/40 bg-white px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
+                  {/* <button className="flex items-center gap-2 rounded-md border border-border/40 bg-white px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
                     <ArrowUpDown className="h-3.5 w-3.5" />
                     Sort
-                  </button>
+                  </button> */}
                 </div>
               </div>
             </div>
@@ -477,23 +451,20 @@ export default function DashboardPage() {
                       Role
                     </th>
                     <th className="px-6 py-3 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
-                      Weekly KPI
-                    </th>
-                    <th className="px-6 py-3 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
                       Task Status
                     </th>
                     <th className="px-6 py-3 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
                       Tasks
                     </th>
                     <th className="px-6 py-3 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
-                      Actions
+                      Aura Score
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/40 bg-white">
                   {isLoading ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center">
+                      <td colSpan={5} className="px-6 py-12 text-center">
                         <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
                         <p className="mt-2 text-sm text-muted-foreground">
                           Loading staff...
@@ -503,85 +474,103 @@ export default function DashboardPage() {
                   ) : filteredStaff.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={5}
                         className="px-6 py-12 text-center text-sm text-muted-foreground"
                       >
-                        {searchQuery ? 'No staff found matching your search' : 'No staff members found'}
+                        {searchQuery
+                          ? 'No staff found matching your search'
+                          : 'No staff members found'}
                       </td>
                     </tr>
                   ) : (
-                    filteredStaff.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((member) => (
-                      <tr
-                        key={member.id}
-                        className="transition-colors hover:bg-muted/20"
-                      >
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <img
-                              src={member.avatar_url}
-                              alt={member.full_name}
-                              className="h-8 w-8 rounded-full ring-2 ring-white"
-                            />
-                            <div>
-                              <p className="text-sm font-medium text-gray-800">
-                                {member.full_name}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {member.department || 'N/A'}
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <p className="text-sm text-gray-700">
-                            {member.job_title || 'Staff'}
-                          </p>
-                        </td>
-                        <td className="px-6 py-4">
-                          {member.weeklyKpi !== null ? (
-                            <span className={`text-sm font-medium ${member.weeklyKpi >= 70 ? 'text-emerald-600' :
-                              member.weeklyKpi >= 50 ? 'text-amber-600' :
-                                'text-red-600'
-                              }`}>
-                              {member.weeklyKpi}%
-                            </span>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">N/A</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4">
-                          {member.taskStatus ? (
-                            <span
-                              className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-medium ${member.taskStatus === 'On Track'
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : member.taskStatus === 'At Risk'
-                                  ? 'bg-amber-100 text-amber-700'
-                                  : 'bg-red-100 text-red-700'
-                                }`}
-                            >
-                              {member.taskStatus}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">N/A</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-xs">
-                            <span className="text-emerald-600">{member.tasksCompleted} done</span>
-                            <span className="text-muted-foreground"> / </span>
-                            <span className="text-amber-600">{member.tasksPending} pending</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <button
-                            onClick={() => router.push(`/dashboard/performance/assess/${member.id}`)}
-                            className="text-xs font-medium text-primary hover:text-primary/80 hover:underline"
+                    filteredStaff
+                      .slice(
+                        (currentPage - 1) * pageSize,
+                        currentPage * pageSize
+                      )
+                      .map((member) => {
+                        const kpiImprovement = member.kpiImprovement;
+                        const auraScore = member.auraScore;
+
+                        return (
+                          <tr
+                            key={member.id}
+                            className="transition-colors hover:bg-muted/20"
                           >
-                            View
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                <img
+                                  src={member.avatar_url}
+                                  alt={member.full_name}
+                                  className="h-8 w-8 rounded-full ring-2 ring-white"
+                                />
+                                {kpiImprovement != null &&
+                                  (kpiImprovement > 0 ? (
+                                    <TrendingUp className="h-4 w-4 text-emerald-500" />
+                                  ) : (
+                                    <TrendingDown className="h-4 w-4 text-rose-500" />
+                                  ))}
+                                <div>
+                                  <p className="text-sm font-medium text-gray-800">
+                                    {member.full_name}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {member.department || 'N/A'}
+                                  </p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <p className="text-sm text-gray-700">
+                                {member.job_title || 'Staff'}
+                              </p>
+                            </td>
+                            <td className="px-6 py-4">
+                              {member.taskStatus ? (
+                                <span
+                                  className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-medium ${
+                                    member.taskStatus === 'On Track'
+                                      ? 'bg-emerald-100 text-emerald-700'
+                                      : member.taskStatus === 'At Risk'
+                                        ? 'bg-amber-100 text-amber-700'
+                                        : 'bg-red-100 text-red-700'
+                                  }`}
+                                >
+                                  {member.taskStatus}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">
+                                  N/A
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="text-xs">
+                                <span className="text-emerald-600">
+                                  {member.tasksCompleted} done
+                                </span>
+                                <span className="text-muted-foreground">
+                                  {' '}
+                                  /{' '}
+                                </span>
+                                <span className="text-amber-600">
+                                  {member.tasksPending} pending
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-1 text-sm font-semibold text-slate-700">
+                                <Star className="h-4 w-4 fill-amber-500 text-amber-500" />
+                                <span>
+                                  {auraScore != null
+                                    ? auraScore.toFixed(1)
+                                    : '—'}
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
                   )}
                 </tbody>
               </table>
@@ -590,40 +579,62 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between border-t border-border/40 px-6 py-4">
               <p className="text-xs text-muted-foreground">
                 Showing{' '}
-                {filteredStaff.length > 0 ? `${(currentPage - 1) * pageSize + 1}-${Math.min(currentPage * pageSize, filteredStaff.length)}` : '0'} of{' '}
-                {filteredStaff.length} staff
+                {filteredStaff.length > 0
+                  ? `${(currentPage - 1) * pageSize + 1}-${Math.min(currentPage * pageSize, filteredStaff.length)}`
+                  : '0'}{' '}
+                of {filteredStaff.length} staff
               </p>
               <div className="flex items-center gap-1">
                 <button
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
-                  className="flex items-center gap-1 rounded-md border border-border/40 bg-white px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-1 rounded-md border border-border/40 bg-white px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <ChevronLeft className="h-3.5 w-3.5" />
                   Prev
                 </button>
-                {Array.from({ length: Math.min(5, Math.ceil(filteredStaff.length / pageSize)) }, (_, i) => {
-                  const pageNum = i + 1;
-                  return (
-                    <button
-                      key={pageNum}
-                      onClick={() => setCurrentPage(pageNum)}
-                      className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${currentPage === pageNum
-                        ? 'bg-primary text-white'
-                        : 'border border-border/40 bg-white text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                {Array.from(
+                  {
+                    length: Math.min(
+                      5,
+                      Math.ceil(filteredStaff.length / pageSize)
+                    ),
+                  },
+                  (_, i) => {
+                    const pageNum = i + 1;
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                          currentPage === pageNum
+                            ? 'bg-primary text-white'
+                            : 'border border-border/40 bg-white text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                         }`}
-                    >
-                      {pageNum}
-                    </button>
-                  );
-                })}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  }
+                )}
                 {Math.ceil(filteredStaff.length / pageSize) > 5 && (
-                  <span className="px-2 text-xs text-muted-foreground">...</span>
+                  <span className="px-2 text-xs text-muted-foreground">
+                    ...
+                  </span>
                 )}
                 <button
-                  onClick={() => setCurrentPage(p => Math.min(Math.ceil(filteredStaff.length / pageSize), p + 1))}
-                  disabled={currentPage >= Math.ceil(filteredStaff.length / pageSize)}
-                  className="flex items-center gap-1 rounded-md border border-border/40 bg-white px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() =>
+                    setCurrentPage((p) =>
+                      Math.min(
+                        Math.ceil(filteredStaff.length / pageSize),
+                        p + 1
+                      )
+                    )
+                  }
+                  disabled={
+                    currentPage >= Math.ceil(filteredStaff.length / pageSize)
+                  }
+                  className="flex items-center gap-1 rounded-md border border-border/40 bg-white px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Next
                   <ChevronRight className="h-3.5 w-3.5" />
@@ -657,7 +668,7 @@ export default function DashboardPage() {
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
-                        data={stats.taskDistribution.filter(d => d.value > 0)}
+                        data={stats.taskDistribution.filter((d) => d.value > 0)}
                         cx="50%"
                         cy="50%"
                         innerRadius={50}
@@ -666,9 +677,11 @@ export default function DashboardPage() {
                         dataKey="value"
                         stroke="none"
                       >
-                        {stats.taskDistribution.filter(d => d.value > 0).map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
+                        {stats.taskDistribution
+                          .filter((d) => d.value > 0)
+                          .map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
                       </Pie>
                     </PieChart>
                   </ResponsiveContainer>
@@ -676,8 +689,12 @@ export default function DashboardPage() {
 
                 <div className="mt-6 space-y-3">
                   {stats.taskDistribution.map((item) => {
-                    const total = stats.taskDistribution.reduce((sum, i) => sum + i.value, 0);
-                    const percentage = total > 0 ? Math.round((item.value / total) * 100) : 0;
+                    const total = stats.taskDistribution.reduce(
+                      (sum, i) => sum + i.value,
+                      0
+                    );
+                    const percentage =
+                      total > 0 ? Math.round((item.value / total) * 100) : 0;
                     return (
                       <div
                         key={item.name}
@@ -688,7 +705,9 @@ export default function DashboardPage() {
                             className="h-2.5 w-2.5 rounded-full"
                             style={{ backgroundColor: item.color }}
                           />
-                          <span className="text-sm text-gray-700">{item.name}</span>
+                          <span className="text-sm text-gray-700">
+                            {item.name}
+                          </span>
                         </div>
                         <div className="text-right">
                           <p className="text-sm font-medium text-gray-800">
@@ -704,7 +723,7 @@ export default function DashboardPage() {
                 </div>
               </>
             ) : (
-              <div className="flex items-center justify-center h-[200px] text-muted-foreground">
+              <div className="flex h-[200px] items-center justify-center text-muted-foreground">
                 No task data available
               </div>
             )}
@@ -729,6 +748,6 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
-    </div >
+    </div>
   );
 }

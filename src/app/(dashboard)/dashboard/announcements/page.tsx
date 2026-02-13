@@ -7,6 +7,8 @@ import {
   getAnnouncements,
   updateAnnouncement,
   deleteAnnouncement,
+  getAnnouncementReaders,
+  getDepartments,
 } from '@/app/actions/announcements';
 import { toast } from 'sonner';
 import Loading from './loading';
@@ -33,6 +35,19 @@ export default function AnnouncementsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
   const [items, setItems] = useState<AnnouncementItem[]>([]);
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [readers, setReaders] = useState<
+    {
+      user_id: string;
+      full_name?: string | null;
+      email?: string | null;
+      department?: string | null;
+      role?: string | null;
+      is_team_lead?: boolean | null;
+      read_at?: string | null;
+    }[]
+  >([]);
+  const [isReadersLoading, setIsReadersLoading] = useState(false);
 
   // Form State
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -53,19 +68,19 @@ export default function AnnouncementsPage() {
       status: (a.status as AnnouncementItem['status']) || 'Published',
       publishedAt: a.scheduled_at
         ? new Date(a.scheduled_at).toLocaleDateString() +
-        ' • ' +
-        new Date(a.scheduled_at).toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-        })
+          ' • ' +
+          new Date(a.scheduled_at).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          })
         : new Date(
-          a.created_at ?? new Date().toISOString()
-        ).toLocaleDateString() +
-        ' • ' +
-        new Date(a.created_at ?? new Date().toISOString()).toLocaleTimeString(
-          [],
-          { hour: '2-digit', minute: '2-digit' }
-        ),
+            a.created_at ?? new Date().toISOString()
+          ).toLocaleDateString() +
+          ' • ' +
+          new Date(a.created_at ?? new Date().toISOString()).toLocaleTimeString(
+            [],
+            { hour: '2-digit', minute: '2-digit' }
+          ),
       audience: a.audience ?? 'All Staff',
       author: 'Admin',
       tags: [],
@@ -76,13 +91,47 @@ export default function AnnouncementsPage() {
         : '',
     }));
     setItems(mapped);
-    if (mapped.length > 0 && !selectedId && mapped[0]) setSelectedId(mapped[0].id);
+    if (mapped.length > 0 && !selectedId && mapped[0])
+      setSelectedId(mapped[0].id);
     setIsFetching(false);
   }, [selectedId]);
 
   useEffect(() => {
     fetchAnnouncements();
   }, [fetchAnnouncements]);
+
+  useEffect(() => {
+    let isMounted = true;
+    getDepartments().then((data) => {
+      if (!isMounted) return;
+      const unique = Array.from(new Set((data || []).filter(Boolean)));
+      setDepartments(unique);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!selectedId) {
+      setReaders([]);
+      return;
+    }
+    setIsReadersLoading(true);
+    getAnnouncementReaders(selectedId)
+      .then((data) => {
+        if (!isMounted) return;
+        setReaders(Array.isArray(data) ? data : []);
+      })
+      .finally(() => {
+        if (!isMounted) return;
+        setIsReadersLoading(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedId]);
 
   const startEdit = (announcement: AnnouncementItem) => {
     setEditingId(announcement.id);
@@ -192,6 +241,13 @@ export default function AnnouncementsPage() {
   });
 
   const selectedAnnouncement = items.find((a) => a.id === selectedId);
+  const audienceOptions = useMemo(() => {
+    const options = ['All Staff', 'Team Leads', ...departments];
+    if (audience && !options.includes(audience)) {
+      options.push(audience);
+    }
+    return options;
+  }, [audience, departments]);
 
   const statusStyles: Record<string, string> = {
     Published: 'bg-primary/10 text-primary',
@@ -282,10 +338,11 @@ export default function AnnouncementsPage() {
               <button
                 key={status}
                 onClick={() => setStatusFilter(status)}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${statusFilter === status
-                  ? 'bg-primary text-white'
-                  : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
-                  }`}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                  statusFilter === status
+                    ? 'bg-primary text-white'
+                    : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
               >
                 {status}
               </button>
@@ -302,10 +359,11 @@ export default function AnnouncementsPage() {
             <div
               key={item.id}
               onClick={() => setSelectedId(item.id)}
-              className={`cursor-pointer rounded-xl border bg-white p-5 shadow-sm transition hover:shadow-md ${selectedId === item.id
-                ? 'border-primary ring-1 ring-primary'
-                : 'border-border/40'
-                }`}
+              className={`cursor-pointer rounded-xl border bg-white p-5 shadow-sm transition hover:shadow-md ${
+                selectedId === item.id
+                  ? 'border-primary ring-1 ring-primary'
+                  : 'border-border/40'
+              }`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-2">
@@ -384,6 +442,52 @@ export default function AnnouncementsPage() {
                   </p>
                 </div>
 
+                <div className="border-t border-border/40 pt-6">
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Readers
+                    </p>
+                    <span className="text-xs text-muted-foreground">
+                      {readers.length} read
+                    </span>
+                  </div>
+                  {isReadersLoading ? (
+                    <p className="text-xs text-muted-foreground">
+                      Loading readers...
+                    </p>
+                  ) : readers.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      No reads yet.
+                    </p>
+                  ) : (
+                    <div className="max-h-48 space-y-3 overflow-y-auto pr-2 text-xs text-gray-700">
+                      {readers.map((reader) => (
+                        <div
+                          key={`${reader.user_id}-${reader.read_at ?? ''}`}
+                          className="flex items-start justify-between gap-3"
+                        >
+                          <div>
+                            <p className="font-medium text-gray-800">
+                              {reader.full_name || 'Unknown'}
+                            </p>
+                            <p className="text-muted-foreground">
+                              {reader.email || 'No email'}{' '}
+                              {reader.department
+                                ? `• ${reader.department}`
+                                : ''}
+                            </p>
+                          </div>
+                          <div className="text-right text-[11px] text-muted-foreground">
+                            {reader.read_at
+                              ? new Date(reader.read_at).toLocaleString()
+                              : 'Unknown time'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex gap-3 pt-4">
                   <button
                     onClick={() => startEdit(selectedAnnouncement)}
@@ -458,13 +562,11 @@ export default function AnnouncementsPage() {
                   onChange={(e) => setAudience(e.target.value)}
                   className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
                 >
-                  <option>All Staff</option>
-                  <option>Operations</option>
-                  <option>Customer Support</option>
-                  <option>Development</option>
-                  <option>Sales</option>
-                  <option>HR</option>
-                  <option>Finance</option>
+                  {audienceOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="space-y-2">
@@ -537,8 +639,8 @@ export default function AnnouncementsPage() {
                     : isScheduled
                       ? 'Schedule'
                       : editingId &&
-                        items.find((i) => i.id === editingId)?.status !==
-                        'Draft'
+                          items.find((i) => i.id === editingId)?.status !==
+                            'Draft'
                         ? 'Update'
                         : 'Publish'}
                 </button>

@@ -1,16 +1,17 @@
-# Schoolable Implementation Plan
+# WorkSight Implementation Plan
 
-This document outlines the steps to make the Schoolable project (Dashboard + Mobile App) fully functional using Supabase.
+This document outlines the steps to make the WorkSight project (Dashboard + Mobile App)
+fully functional using the Spring Boot backend.
 
-## 1. Supabase Project Setup (User Action Required)
+## 1. Backend Environment Setup (User Action Required)
 
-1.  **Create Project**: Go to [Supabase](https://supabase.com/) and create a new project.
-2.  **Get Credentials**:
-    - `Project URL`
-    - `Anon Key`
-3.  **Run SQL Schema**:
-    - Copy the SQL from `SUPABASE_SETUP.md` and run it in the Supabase SQL Editor.
-    - This sets up `profiles`, `attendance`, `tasks`, and `messages` tables with Row Level Security (RLS).
+1.  **Provision Database**: PostgreSQL reachable by `SPRING_DATASOURCE_URL`.
+2.  **Set Required Env Vars**:
+    - `SPRING_DATASOURCE_URL`
+    - `SPRING_DATASOURCE_USERNAME`
+    - `SPRING_DATASOURCE_PASSWORD`
+    - `JWT_SECRET` (32+ chars)
+3.  **Run Migrations**: Flyway runs on startup; verify `db/migration` is up to date.
 
 ## 2. Environment Configuration
 
@@ -19,42 +20,57 @@ This document outlines the steps to make the Schoolable project (Dashboard + Mob
 Create `.env.local`:
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=your_project_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+NEXT_PUBLIC_API_URL=http://localhost:8081
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+NEXT_PUBLIC_APP_NAME=WorkSight Dashboard
+NEXT_PUBLIC_ENABLE_DEV_TOOLS=true
+```
+
+### Team Lead (`schoolable_team_lead`)
+
+Create `.env.local`:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8081
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+NEXT_PUBLIC_APP_NAME=WorkSight Team Lead
+NEXT_PUBLIC_ENABLE_DEV_TOOLS=false
 ```
 
 ### Mobile App (`schoolable`)
 
-Create `assets/.env` (and add to `pubspec.yaml` assets):
+Create `assets/.env`:
 
 ```env
-SUPABASE_URL=your_project_url
-SUPABASE_ANON_KEY=your_anon_key
+BACKEND_URL=http://localhost:8081
 ```
 
 ## 3. Dashboard Implementation (Next.js)
 
 - [x] **Authentication**:
   - [x] Create `src/app/login/page.tsx`.
-  - [x] Implement `src/app/auth/callback/route.ts` (Skipped, using server actions directly).
   - [x] Add `middleware.ts` to protect `(dashboard)` routes.
 - [ ] **Dashboard Logic**:
-  - [ ] Update `(dashboard)/page.tsx` to fetch "Super Admin" data (all attendance, overview stats).
+  - [ ] Update `(dashboard)/dashboard` to fetch admin data (attendance, stats).
   - [ ] Ensure only users with `role: 'admin'` can access.
 
-## 4. Mobile App Implementation (Flutter)
+## 4. Team Lead Implementation (Next.js)
+
+- [x] **Auth + Protected Routes** in `(dashboard)`.
+- [ ] **KPI/Analytics**: Hook up dashboard tiles to `/api/team-lead` endpoints.
+
+## 5. Mobile App Implementation (Flutter)
 
 - [x] **Initialization**:
-  - [x] Update `main.dart` to use `flutter_dotenv` to load credentials.
+  - [x] Update `main.dart` to load `assets/.env`.
 - [x] **Authentication**:
-  - [x] Update `StartupViewModel` to check `SupabaseService.currentUser`.
-  - [x] Update `LoginViewModel` to call `SupabaseService.signIn`.
+  - [x] Update `StartupViewModel` to validate stored JWT.
 - [ ] **Features**:
-  - [ ] **Attendance**: Wire up "Check In" button to `SupabaseService.checkIn()`.
-  - [ ] **Profile**: Display user data from `profiles` table.
+  - [ ] **Attendance**: Wire up check-in to backend endpoints.
+  - [ ] **Profile**: Display `profile/me` data from backend.
 
-## 5. Additional Requirements for Success
+## 6. Additional Requirements for Success
 
-- **Push Notifications**: For "Tasks" and "Chat" updates (requires Firebase Cloud Messaging or OneSignal).
-- **Storage**: For profile pictures (Supabase Storage).
-- **Edge Functions**: For complex logic (e.g., automatic late marking).
+- **Push Notifications**: Firebase Cloud Messaging (already initialized when config is valid).
+- **Storage**: Use backend `/storage` endpoints (Cloudinary config required).
+- **AI Insights**: Gemini-based KPI insights configured via `GEMINI_API_KEY`.

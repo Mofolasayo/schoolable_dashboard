@@ -4,6 +4,7 @@
 import {
   getTasks,
   createTask,
+  createRecurringTaskTemplate,
   updateTaskStatus,
   deleteTask,
   createTaskComment,
@@ -11,6 +12,11 @@ import {
 } from '@/app/actions/tasks';
 import { CreateTaskData } from '@/app/types/tasks';
 import { getStaffProfiles, StaffProfile } from '@/app/actions/staff';
+import {
+  getReferenceData,
+  type ReferenceData,
+} from '@/app/actions/reference-data';
+import { getUserAvatarUrl } from '@/lib/avatar';
 import { toast } from 'sonner';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -20,6 +26,7 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
+  Repeat,
   MoreVertical,
   X,
   Calendar,
@@ -38,13 +45,16 @@ import {
 } from 'lucide-react';
 import { useWebSocket, useWebSocketSubscription } from '@/lib/websocket';
 
-type TaskStatus = 'Pending' | 'In Progress' | 'Completed' | 'Overdue';
-type TaskPriority = 'Low' | 'Medium' | 'High';
+type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'REVIEW' | 'DONE' | 'CANCELLED';
+type TaskStatusFilter = TaskStatus | 'Overdue' | 'All';
+type TaskPriority = 'Low' | 'Medium' | 'High' | 'Critical';
 
 type Assignee = {
+  id?: string;
   name: string;
   avatar: string;
   department: string;
+  role?: string | null;
 };
 
 type Comment = {
@@ -72,7 +82,11 @@ type Task = {
   id: number;
   title: string;
   description: string;
+  creator?: {
+    name?: string | null;
+  } | null;
   assignee: Assignee;
+  assignees?: Array<Assignee & { role?: string | null }>;
   status: TaskStatus;
   statusColor: string;
   priority: TaskPriority;
@@ -96,6 +110,7 @@ type NewTaskForm = {
   title: string;
   description: string;
   assignee: string;
+  assigneeIds: string[];
   organization: string;
   priority: TaskPriority;
   dueDate: string;
@@ -103,6 +118,11 @@ type NewTaskForm = {
   tags: string[];
   subtasks: { title: string }[];
   attachments: File[];
+  isRecurring: boolean;
+  recurrencePattern: 'daily' | 'weekly' | 'biweekly' | 'monthly';
+  recurrenceStartDate: string;
+  recurrenceDays: number[];
+  daysUntilDue: number;
 };
 
 type UserProfile = {
@@ -115,6 +135,153 @@ type UserProfile = {
   avatar_url?: string | null;
 };
 
+function getStatusColor(status: TaskStatus, isOverdue: boolean): string {
+  if (isOverdue) return 'bg-red-100 text-red-700';
+  switch (status) {
+    case 'DONE':
+      return 'bg-emerald-100 text-emerald-700';
+    case 'IN_PROGRESS':
+      return 'bg-blue-100 text-blue-700';
+    case 'REVIEW':
+      return 'bg-amber-100 text-amber-700';
+    case 'CANCELLED':
+      return 'bg-gray-200 text-gray-600';
+    default:
+      return 'bg-gray-100 text-gray-700';
+  }
+}
+
+function getPriorityColor(priority: TaskPriority): string {
+  switch (priority) {
+    case 'High':
+      return 'bg-rose-100 text-rose-700';
+    case 'Critical':
+      return 'bg-rose-100 text-rose-700';
+    case 'Medium':
+      return 'bg-amber-100 text-amber-700';
+    case 'Low':
+      return 'bg-emerald-100 text-emerald-700';
+    default:
+      return 'bg-gray-100 text-gray-700';
+  }
+}
+
+function getDueIn(dueDate?: string | null): string {
+  if (!dueDate) return 'No due date';
+  const due = new Date(dueDate);
+  const now = new Date();
+  const diff = due.getTime() - now.getTime();
+  const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+
+  if (days < 0) return `${Math.abs(days)} days overdue`;
+  if (days === 0) return 'Due today';
+  if (days === 1) return 'Due tomorrow';
+  return `Due in ${days} days`;
+}
+
+function isTaskOverdue(task: Task): boolean {
+  if (!task.dueDate) return false;
+  const due = new Date(task.dueDate);
+  return (
+    due.getTime() < Date.now() &&
+    task.status !== 'DONE' &&
+    task.status !== 'CANCELLED'
+  );
+}
+
+const recurrencePatterns = [
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'biweekly', label: 'Biweekly' },
+  { value: 'monthly', label: 'Monthly' },
+];
+
+const weekdayOptions = [
+  { value: 1, label: 'Mon' },
+  { value: 2, label: 'Tue' },
+  { value: 3, label: 'Wed' },
+  { value: 4, label: 'Thu' },
+  { value: 5, label: 'Fri' },
+  { value: 6, label: 'Sat' },
+  { value: 7, label: 'Sun' },
+];
+
+function toDateString(date: Date): string {
+  return date.toISOString().split('T')[0];
+}
+
+function parseLocalDate(dateValue: string): Date {
+  return new Date(`${dateValue}T00:00:00`);
+}
+
+function getWeekdayValue(date: Date): number {
+  const day = date.getDay();
+  return day === 0 ? 7 : day;
+}
+
+function clampDayOfMonth(year: number, monthIndex: number, day: number): Date {
+  const maxDay = new Date(year, monthIndex + 1, 0).getDate();
+  const safeDay = Math.min(Math.max(day, 1), maxDay);
+  return new Date(year, monthIndex, safeDay);
+}
+
+function computeNextOccurrence(
+  pattern: 'daily' | 'weekly' | 'biweekly' | 'monthly',
+  startDate: Date,
+  recurrenceDays: number[],
+  recurrenceDay?: number
+): Date {
+  if (pattern === 'daily') {
+    const next = new Date(startDate);
+    next.setDate(next.getDate() + 1);
+    return next;
+  }
+
+  if (pattern === 'monthly') {
+    const targetDay = recurrenceDay ?? startDate.getDate();
+    const nextMonth = new Date(
+      startDate.getFullYear(),
+      startDate.getMonth() + 1,
+      1
+    );
+    return clampDayOfMonth(
+      nextMonth.getFullYear(),
+      nextMonth.getMonth(),
+      targetDay
+    );
+  }
+
+  const days =
+    recurrenceDays.length > 0
+      ? recurrenceDays
+      : [recurrenceDay ?? getWeekdayValue(startDate)];
+  const searchStart = new Date(startDate);
+  searchStart.setDate(searchStart.getDate() + 1);
+
+  for (let offset = 0; offset < 7; offset += 1) {
+    const candidate = new Date(searchStart);
+    candidate.setDate(searchStart.getDate() + offset);
+    if (days.includes(getWeekdayValue(candidate))) {
+      if (pattern === 'biweekly') {
+        const biweekly = new Date(candidate);
+        biweekly.setDate(candidate.getDate() + 7);
+        return biweekly;
+      }
+      return candidate;
+    }
+  }
+
+  const fallback = new Date(searchStart);
+  fallback.setDate(searchStart.getDate() + 7);
+  return pattern === 'biweekly'
+    ? new Date(
+        fallback.getFullYear(),
+        fallback.getMonth(),
+        fallback.getDate() + 7
+      )
+    : fallback;
+}
+
 // ... inside component ...
 export default function TaskManagementPage() {
   const [newComment, setNewComment] = useState('');
@@ -124,6 +291,9 @@ export default function TaskManagementPage() {
   const [staffList, setStaffList] = useState<StaffProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [referenceData, setReferenceData] = useState<ReferenceData | null>(
+    null
+  );
   const [customTag, setCustomTag] = useState('');
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [editDescriptionText, setEditDescriptionText] = useState('');
@@ -137,7 +307,7 @@ export default function TaskManagementPage() {
       // Get user info from cookie
       const userInfoCookie = document.cookie
         .split('; ')
-        .find(row => row.startsWith('user_info='));
+        .find((row) => row.startsWith('user_info='));
       if (userInfoCookie) {
         try {
           const cookieValue = userInfoCookie.split('=')[1];
@@ -160,29 +330,58 @@ export default function TaskManagementPage() {
   const refreshTasks = useCallback(async () => {
     try {
       const tasks = await getTasks();
-      setTaskList(tasks as unknown as Task[]);
+      const mapped = (tasks as unknown as Task[]).map((task) => {
+        const overdue = isTaskOverdue(task);
+        return {
+          ...task,
+          statusColor: getStatusColor(task.status, overdue),
+          priorityColor: getPriorityColor(task.priority),
+          dueIn: getDueIn(task.dueDate),
+        };
+      });
+      setTaskList(mapped);
     } catch {
       console.error('Failed to refresh tasks');
     }
   }, []);
 
   // Subscribe to task updates via WebSocket
-  useWebSocketSubscription('notification', (data) => {
-    console.log('📥 Task notification received:', data);
-    // Refresh tasks when we get any notification
-    refreshTasks();
-  }, [refreshTasks]);
+  useWebSocketSubscription(
+    'notification',
+    (data) => {
+      console.log('📥 Task notification received:', data);
+      // Refresh tasks when we get any notification
+      refreshTasks();
+    },
+    [refreshTasks]
+  );
 
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        const [tasks, staff] = await Promise.all([
+        const [tasks, staff, refs] = await Promise.all([
           getTasks(),
           getStaffProfiles(),
+          getReferenceData().catch((err) => {
+            console.warn('Failed to load reference data:', err);
+            return null;
+          }),
         ]);
-        setTaskList(tasks as unknown as Task[]);
+        const mapped = (tasks as unknown as Task[]).map((task) => {
+          const overdue = isTaskOverdue(task);
+          return {
+            ...task,
+            statusColor: getStatusColor(task.status, overdue),
+            priorityColor: getPriorityColor(task.priority),
+            dueIn: getDueIn(task.dueDate),
+          };
+        });
+        setTaskList(mapped);
         setStaffList(staff);
+        if (refs) {
+          setReferenceData(refs);
+        }
       } catch {
         toast.error('Failed to load tasks');
       } finally {
@@ -203,9 +402,9 @@ export default function TaskManagementPage() {
 
   // Calculate metrics
   const totalTasks = taskList.length;
-  const inProgress = taskList.filter((t) => t.status === 'In Progress').length;
-  const completed = taskList.filter((t) => t.status === 'Completed').length;
-  const overdue = taskList.filter((t) => t.status === 'Overdue').length;
+  const inProgress = taskList.filter((t) => t.status === 'IN_PROGRESS').length;
+  const completed = taskList.filter((t) => t.status === 'DONE').length;
+  const overdue = taskList.filter((t) => isTaskOverdue(t)).length;
 
   const summaryMetrics = [
     {
@@ -237,9 +436,7 @@ export default function TaskManagementPage() {
       color: 'text-red-600',
     },
   ];
-  const [selectedStatus, setSelectedStatus] = useState<TaskStatus | 'All'>(
-    'All'
-  );
+  const [selectedStatus, setSelectedStatus] = useState<TaskStatusFilter>('All');
   const [selectedPriority, setSelectedPriority] = useState<
     TaskPriority | 'All'
   >('All');
@@ -252,6 +449,7 @@ export default function TaskManagementPage() {
     title: '',
     description: '',
     assignee: '',
+    assigneeIds: [],
     organization: '',
     priority: 'Medium',
     dueDate: '',
@@ -259,21 +457,26 @@ export default function TaskManagementPage() {
     tags: [],
     subtasks: [],
     attachments: [],
+    isRecurring: false,
+    recurrencePattern: 'weekly',
+    recurrenceStartDate: '',
+    recurrenceDays: [],
+    daysUntilDue: 1,
   });
   const recordsPerPage = 5;
-  const statusFilters: (TaskStatus | 'All')[] = [
-    'All',
-    'Pending',
-    'In Progress',
-    'Completed',
-    'Overdue',
-  ];
-  const priorityFilters: (TaskPriority | 'All')[] = [
-    'All',
-    'High',
-    'Medium',
-    'Low',
-  ];
+  const statusFilters = referenceData?.taskStatusFilters ?? [];
+  const priorityFilters = referenceData?.taskPriorityFilters ?? [];
+  const taskPriorities = referenceData?.taskPriorities ?? [];
+  const statusLabelsByValue = new Map(
+    statusFilters.map((status) => [status.value, status.label])
+  );
+
+  const getStatusLabel = (task: Task): string => {
+    if (isTaskOverdue(task)) {
+      return statusLabelsByValue.get('Overdue') ?? 'Overdue';
+    }
+    return statusLabelsByValue.get(task.status) ?? task.status;
+  };
 
   // Unique departments from staff list
   // Unique departments from staff list
@@ -295,36 +498,44 @@ export default function TaskManagementPage() {
   // Include the current admin user (self-assignment option)
   const validAssignees = userProfile
     ? [
-      // Add admin as first option with a special marker
-      {
-        id: userProfile.id,
-        full_name: userProfile.full_name || 'Admin',
-        department: userProfile.department || 'Admin',
-        email: userProfile.email,
-        role: userProfile.role,
-        isSelf: true, // Marker to identify self
-      } as StaffProfile & { isSelf?: boolean },
-      // Filter out the admin from staff list if they appear there
-      ...baseAssignees.filter((s) => s.id !== userProfile.id),
-    ]
+        // Add admin as first option with a special marker
+        {
+          id: userProfile.id,
+          full_name: userProfile.full_name || 'Admin',
+          department: userProfile.department || 'Admin',
+          email: userProfile.email,
+          role: userProfile.role,
+          isSelf: true, // Marker to identify self
+        } as StaffProfile & { isSelf?: boolean },
+        // Filter out the admin from staff list if they appear there
+        ...baseAssignees.filter((s) => s.id !== userProfile.id),
+      ]
     : baseAssignees;
 
-  const availableTags = [
-    'Documentation',
-    'Onboarding',
-    'HR',
-    'Reviews',
-    'Engineering',
-    'Integration',
-    'Reports',
-    'Sales',
-    'Marketing',
-    'Website',
-  ];
+  const toggleAssignee = (assigneeId: string) => {
+    setNewTask((prev) => {
+      const exists = prev.assigneeIds.includes(assigneeId);
+      const nextIds = exists
+        ? prev.assigneeIds.filter((id) => id !== assigneeId)
+        : [...prev.assigneeIds, assigneeId];
+      return {
+        ...prev,
+        assigneeIds: nextIds,
+        assignee: nextIds[0] || '',
+      };
+    });
+  };
+
+  const availableTags = Array.from(
+    new Set(taskList.flatMap((task) => task.tags || []))
+  ).filter((tag) => tag && tag.trim().length > 0);
 
   const filteredTasks = taskList.filter((task) => {
     const matchesStatus =
-      selectedStatus === 'All' || task.status === selectedStatus;
+      selectedStatus === 'All' ||
+      (selectedStatus === 'Overdue'
+        ? isTaskOverdue(task)
+        : task.status === selectedStatus);
     const matchesPriority =
       selectedPriority === 'All' || task.priority === selectedPriority;
     const matchesTeam =
@@ -342,6 +553,11 @@ export default function TaskManagementPage() {
   const selectedTask = selectedTaskId
     ? (taskList.find((task) => task.id === selectedTaskId) ?? null)
     : null;
+  const selectedAssignees = selectedTask
+    ? selectedTask.assignees && selectedTask.assignees.length > 0
+      ? selectedTask.assignees
+      : [selectedTask.assignee]
+    : [];
   const completedSubtasks =
     selectedTask?.subtasks?.filter((subtask) => subtask.completed).length ?? 0;
   const totalSubtasks = selectedTask?.subtasks?.length ?? 0;
@@ -353,11 +569,9 @@ export default function TaskManagementPage() {
     setTaskList((prev) =>
       prev.map((task) => {
         if (task.id !== taskId) return task;
-        const isCompleted = task.status === 'Completed';
-        const nextStatus = isCompleted ? 'Pending' : 'Completed';
-        const nextStatusColor = isCompleted
-          ? 'bg-gray-100 text-gray-700'
-          : 'bg-emerald-100 text-emerald-700';
+        const isCompleted = task.status === 'DONE';
+        const nextStatus: TaskStatus = isCompleted ? 'TODO' : 'DONE';
+        const nextStatusColor = getStatusColor(nextStatus, false);
         const nextProgress = isCompleted ? 0 : 100;
 
         return {
@@ -372,17 +586,35 @@ export default function TaskManagementPage() {
     // 2. Server Action
     const task = taskList.find((t) => t.id === taskId);
     if (!task) return;
-    const newStatus = task.status === 'Completed' ? 'Pending' : 'Completed';
+    const newStatus: TaskStatus = task.status === 'DONE' ? 'TODO' : 'DONE';
     try {
       const res = await updateTaskStatus(taskId, newStatus);
       if (!res.success) throw new Error(res.error);
       const updated = await getTasks();
-      setTaskList(updated as unknown as Task[]);
+      const mapped = (updated as unknown as Task[]).map((t) => {
+        const overdue = isTaskOverdue(t);
+        return {
+          ...t,
+          statusColor: getStatusColor(t.status, overdue),
+          priorityColor: getPriorityColor(t.priority),
+          dueIn: getDueIn(t.dueDate),
+        };
+      });
+      setTaskList(mapped);
     } catch {
       toast.error('Failed to update status');
       // Revert (reload all)
       const all = await getTasks();
-      setTaskList(all as unknown as Task[]);
+      const mapped = (all as unknown as Task[]).map((t) => {
+        const overdue = isTaskOverdue(t);
+        return {
+          ...t,
+          statusColor: getStatusColor(t.status, overdue),
+          priorityColor: getPriorityColor(t.priority),
+          dueIn: getDueIn(t.dueDate),
+        };
+      });
+      setTaskList(mapped);
     }
   };
 
@@ -404,11 +636,14 @@ export default function TaskManagementPage() {
         <div className="flex items-center gap-2">
           {/* Real-time connection indicator */}
           <div
-            className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium ${isConnected
-              ? 'bg-emerald-50 text-emerald-700'
-              : 'bg-gray-100 text-gray-500'
-              }`}
-            title={isConnected ? 'Real-time updates active' : 'Polling for updates'}
+            className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium ${
+              isConnected
+                ? 'bg-emerald-50 text-emerald-700'
+                : 'bg-gray-100 text-gray-500'
+            }`}
+            title={
+              isConnected ? 'Real-time updates active' : 'Polling for updates'
+            }
           >
             {isConnected ? (
               <Wifi className="h-3 w-3" />
@@ -477,14 +712,17 @@ export default function TaskManagementPage() {
               <div className="flex items-center gap-1">
                 {statusFilters.map((status) => (
                   <button
-                    key={status}
-                    onClick={() => setSelectedStatus(status)}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${selectedStatus === status
-                      ? 'bg-primary text-white'
-                      : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
-                      }`}
+                    key={status.value}
+                    onClick={() =>
+                      setSelectedStatus(status.value as TaskStatusFilter)
+                    }
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                      selectedStatus === status.value
+                        ? 'bg-primary text-white'
+                        : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
                   >
-                    {status}
+                    {status.label}
                   </button>
                 ))}
               </div>
@@ -498,14 +736,19 @@ export default function TaskManagementPage() {
               <div className="flex items-center gap-1">
                 {priorityFilters.map((priority) => (
                   <button
-                    key={priority}
-                    onClick={() => setSelectedPriority(priority)}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${selectedPriority === priority
-                      ? 'bg-primary text-white'
-                      : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
-                      }`}
+                    key={priority.value}
+                    onClick={() =>
+                      setSelectedPriority(
+                        priority.value as TaskPriority | 'All'
+                      )
+                    }
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                      selectedPriority === priority.value
+                        ? 'bg-primary text-white'
+                        : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
                   >
-                    {priority}
+                    {priority.label}
                   </button>
                 ))}
               </div>
@@ -601,7 +844,7 @@ export default function TaskManagementPage() {
                       <div className="flex-shrink-0">
                         <input
                           type="checkbox"
-                          checked={task.status === 'Completed'}
+                          checked={task.status === 'DONE'}
                           onChange={(e) => {
                             e.stopPropagation();
                             toggleTaskCompletion(task.id);
@@ -659,7 +902,7 @@ export default function TaskManagementPage() {
                             <span
                               className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-medium ${task.statusColor}`}
                             >
-                              {task.status}
+                              {getStatusLabel(task)}
                             </span>
                             <span
                               className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-medium ${task.priorityColor}`}
@@ -672,7 +915,7 @@ export default function TaskManagementPage() {
                           <div className="flex items-center gap-1">
                             <Clock className="h-3 w-3 text-muted-foreground" />
                             <span
-                              className={`${task.status === 'Overdue' ? 'text-red-600' : 'text-muted-foreground'}`}
+                              className={`${isTaskOverdue(task) ? 'text-red-600' : 'text-muted-foreground'}`}
                             >
                               {task.dueIn}
                             </span>
@@ -680,7 +923,7 @@ export default function TaskManagementPage() {
                         </div>
 
                         {/* Progress Bar */}
-                        {task.status === 'In Progress' && (
+                        {task.status === 'IN_PROGRESS' && (
                           <div className="mt-3">
                             <div className="mb-1 flex items-center justify-between">
                               <span className="text-[10px] text-muted-foreground">
@@ -756,6 +999,7 @@ export default function TaskManagementPage() {
                     title: '',
                     description: '',
                     assignee: '',
+                    assigneeIds: [],
                     organization: '',
                     priority: 'Medium',
                     dueDate: '',
@@ -763,6 +1007,11 @@ export default function TaskManagementPage() {
                     tags: [],
                     subtasks: [],
                     attachments: [],
+                    isRecurring: false,
+                    recurrencePattern: 'weekly',
+                    recurrenceStartDate: '',
+                    recurrenceDays: [],
+                    daysUntilDue: 1,
                   });
                 }}
                 className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -831,22 +1080,40 @@ export default function TaskManagementPage() {
 
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-gray-700">
-                    Assignee *
+                    Assignees *
                   </label>
-                  <select
-                    value={newTask.assignee || ''}
-                    onChange={(e) =>
-                      setNewTask({ ...newTask, assignee: e.target.value })
-                    }
-                    className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
-                  >
-                    <option value="">Select assignee</option>
-                    {validAssignees.map((staff) => (
-                      <option key={staff.id} value={staff.id}>
-                        {staff.full_name} {staff.id === userProfile?.id ? '(Me)' : `(${staff.department})`}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="max-h-48 space-y-2 overflow-y-auto rounded-lg border border-border/40 bg-white p-3 text-sm">
+                    {validAssignees.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">
+                        No team members available for this department.
+                      </p>
+                    ) : (
+                      validAssignees.map((staff) => {
+                        const isSelected = newTask.assigneeIds.includes(
+                          staff.id
+                        );
+                        return (
+                          <label
+                            key={staff.id}
+                            className="flex items-center gap-2 text-xs text-gray-700"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleAssignee(staff.id)}
+                              className="h-4 w-4 rounded border-border/40 text-primary focus:ring-primary/30"
+                            />
+                            <span className="flex-1">
+                              {staff.full_name}{' '}
+                              {staff.id === userProfile?.id
+                                ? '(Me)'
+                                : `(${staff.department})`}
+                            </span>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -866,9 +1133,11 @@ export default function TaskManagementPage() {
                     }
                     className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
                   >
-                    <option value="Low">Low</option>
-                    <option value="Medium">Medium</option>
-                    <option value="High">High</option>
+                    {taskPriorities.map((priority) => (
+                      <option key={priority.value} value={priority.value}>
+                        {priority.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -899,6 +1168,141 @@ export default function TaskManagementPage() {
                     className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
+              </div>
+
+              <div className="rounded-lg border border-border/40 bg-white p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Repeat className="h-4 w-4 text-primary" />
+                    <div>
+                      <p className="text-xs font-medium text-gray-800">
+                        Recurring task
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Schedule this task to repeat automatically.
+                      </p>
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={newTask.isRecurring}
+                      onChange={(e) =>
+                        setNewTask({
+                          ...newTask,
+                          isRecurring: e.target.checked,
+                        })
+                      }
+                      className="h-4 w-4 rounded border-border/40 text-primary focus:ring-primary/30"
+                    />
+                    Enable
+                  </label>
+                </div>
+
+                {newTask.isRecurring && (
+                  <div className="mt-4 space-y-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-gray-700">
+                          Pattern
+                        </label>
+                        <select
+                          value={newTask.recurrencePattern}
+                          onChange={(e) =>
+                            setNewTask({
+                              ...newTask,
+                              recurrencePattern: e.target.value as
+                                | 'daily'
+                                | 'weekly'
+                                | 'biweekly'
+                                | 'monthly',
+                            })
+                          }
+                          className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
+                        >
+                          {recurrencePatterns.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-gray-700">
+                          Starts on
+                        </label>
+                        <input
+                          type="date"
+                          value={newTask.recurrenceStartDate}
+                          onChange={(e) =>
+                            setNewTask({
+                              ...newTask,
+                              recurrenceStartDate: e.target.value,
+                            })
+                          }
+                          className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-gray-700">
+                          Days until due
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={newTask.daysUntilDue}
+                          onChange={(e) =>
+                            setNewTask({
+                              ...newTask,
+                              daysUntilDue: Math.max(0, Number(e.target.value)),
+                            })
+                          }
+                          className="w-full rounded-lg border border-border/40 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary/40 focus:ring-2 focus:ring-primary/20"
+                        />
+                      </div>
+                    </div>
+
+                    {(newTask.recurrencePattern === 'weekly' ||
+                      newTask.recurrencePattern === 'biweekly') && (
+                      <div>
+                        <p className="mb-2 text-xs font-medium text-gray-700">
+                          Repeat on
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {weekdayOptions.map((day) => {
+                            const isSelected = newTask.recurrenceDays.includes(
+                              day.value
+                            );
+                            return (
+                              <button
+                                key={day.value}
+                                type="button"
+                                onClick={() => {
+                                  const updated = isSelected
+                                    ? newTask.recurrenceDays.filter(
+                                        (value) => value !== day.value
+                                      )
+                                    : [...newTask.recurrenceDays, day.value];
+                                  setNewTask({
+                                    ...newTask,
+                                    recurrenceDays: updated,
+                                  });
+                                }}
+                                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                                  isSelected
+                                    ? 'border-primary bg-primary/10 text-primary'
+                                    : 'border-border/40 bg-white text-muted-foreground hover:text-foreground'
+                                }`}
+                              >
+                                {day.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Tags */}
@@ -1140,6 +1544,7 @@ export default function TaskManagementPage() {
                     title: '',
                     description: '',
                     assignee: '',
+                    assigneeIds: [],
                     organization: '',
                     priority: 'Medium',
                     dueDate: '',
@@ -1147,6 +1552,11 @@ export default function TaskManagementPage() {
                     tags: [],
                     subtasks: [],
                     attachments: [],
+                    isRecurring: false,
+                    recurrencePattern: 'weekly',
+                    recurrenceStartDate: '',
+                    recurrenceDays: [],
+                    daysUntilDue: 1,
                   });
                 }}
                 className="rounded-md border border-border/40 bg-white px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
@@ -1156,80 +1566,249 @@ export default function TaskManagementPage() {
               <button
                 disabled={isSubmitting}
                 onClick={async () => {
-                  if (!newTask.title || !newTask.description) {
+                  if (
+                    !newTask.title ||
+                    !newTask.description ||
+                    newTask.assigneeIds.length === 0
+                  ) {
                     toast.error('Please fill in required fields');
                     return;
                   }
 
                   setIsSubmitting(true);
                   try {
-                    // Upload attachments to Cloudinary first
-                    const uploadedAttachments: { name: string; size: number; type: string; url: string; path: string }[] = [];
+                    const primaryAssigneeId =
+                      newTask.assignee || newTask.assigneeIds[0] || '';
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const isRecurring = newTask.isRecurring;
+                    let recurringTemplateId: string | undefined;
+                    let shouldCreateInstance = true;
+                    const startDateValue =
+                      newTask.recurrenceStartDate ||
+                      newTask.dueDate ||
+                      toDateString(today);
 
-                    if (newTask.attachments.length > 0) {
-                      toast.info('Uploading attachments...');
+                    if (isRecurring) {
+                      const startDate = parseLocalDate(startDateValue);
+                      shouldCreateInstance =
+                        startDate.getTime() <= today.getTime();
 
-                      for (const file of newTask.attachments) {
-                        try {
-                          // Create FormData and upload via API route
-                          const formData = new FormData();
-                          formData.append('file', file);
+                      const normalizedRecurrenceDays =
+                        newTask.recurrencePattern === 'weekly' ||
+                        newTask.recurrencePattern === 'biweekly'
+                          ? newTask.recurrenceDays.length > 0
+                            ? newTask.recurrenceDays
+                            : [getWeekdayValue(startDate)]
+                          : [];
 
-                          const uploadRes = await fetch('/api/upload', {
-                            method: 'POST',
-                            body: formData,
-                          });
+                      const recurrenceDay =
+                        newTask.recurrencePattern === 'monthly'
+                          ? startDate.getDate()
+                          : normalizedRecurrenceDays.length === 0 &&
+                              newTask.recurrencePattern !== 'daily'
+                            ? getWeekdayValue(startDate)
+                            : undefined;
 
-                          if (uploadRes.ok) {
-                            const result = await uploadRes.json();
-                            uploadedAttachments.push({
-                              name: file.name,
-                              size: file.size,
-                              type: file.type,
-                              url: result.url,
-                              path: result.publicId || '',
-                            });
-                          } else {
-                            console.error('Failed to upload file:', file.name);
+                      const nextOccurrenceValue = shouldCreateInstance
+                        ? toDateString(
+                            computeNextOccurrence(
+                              newTask.recurrencePattern,
+                              startDate,
+                              normalizedRecurrenceDays,
+                              recurrenceDay
+                            )
+                          )
+                        : startDateValue;
+
+                      const recurringRes = await createRecurringTaskTemplate({
+                        title: newTask.title,
+                        description: newTask.description,
+                        defaultPriority: newTask.priority,
+                        defaultAssigneeId: primaryAssigneeId || undefined,
+                        organization: newTask.organization,
+                        tags: newTask.tags,
+                        recurrencePattern: newTask.recurrencePattern,
+                        recurrenceDay,
+                        recurrenceDays:
+                          normalizedRecurrenceDays.length > 0
+                            ? normalizedRecurrenceDays
+                            : undefined,
+                        dueTime: newTask.dueTime || undefined,
+                        daysUntilDue: newTask.daysUntilDue,
+                        nextOccurrence: nextOccurrenceValue,
+                      });
+
+                      if (!recurringRes.success || !recurringRes.template?.id) {
+                        toast.error(
+                          recurringRes.error ||
+                            'Failed to create recurring task'
+                        );
+                        return;
+                      }
+
+                      recurringTemplateId = recurringRes.template.id;
+
+                      if (
+                        !shouldCreateInstance &&
+                        newTask.attachments.length > 0
+                      ) {
+                        toast.info(
+                          'Attachments will be available on the next task instance.'
+                        );
+                      }
+                    }
+
+                    if (shouldCreateInstance) {
+                      // Upload attachments to Cloudinary first
+                      const uploadedAttachments: {
+                        name: string;
+                        size: number;
+                        type: string;
+                        url: string;
+                        path: string;
+                      }[] = [];
+                      const uploadErrors: string[] = [];
+                      const maxFileSize = 10 * 1024 * 1024;
+
+                      if (newTask.attachments.length > 0) {
+                        toast.info('Uploading attachments...');
+
+                        for (const file of newTask.attachments) {
+                          try {
+                            if (file.size > maxFileSize) {
+                              uploadErrors.push(
+                                `${file.name}: File exceeds 10MB limit`
+                              );
+                              continue;
+                            }
+
+                            // Create FormData and upload via API route
+                            const formData = new FormData();
+                            formData.append('file', file);
+
+                            const uploadRes = await fetch(
+                              '/api/upload?folder=tasks',
+                              {
+                                method: 'POST',
+                                body: formData,
+                              }
+                            );
+
+                            if (uploadRes.ok) {
+                              const result = await uploadRes.json();
+                              uploadedAttachments.push({
+                                name: file.name,
+                                size: file.size,
+                                type: file.type,
+                                url: result.url,
+                                path: result.publicId || '',
+                              });
+                            } else {
+                              const errorPayload = await uploadRes
+                                .json()
+                                .catch(() => ({}));
+                              const message =
+                                typeof errorPayload?.error === 'string'
+                                  ? errorPayload.error
+                                  : 'Upload failed';
+                              uploadErrors.push(`${file.name}: ${message}`);
+                            }
+                          } catch (uploadErr) {
+                            console.error(
+                              'Error uploading file:',
+                              file.name,
+                              uploadErr
+                            );
+                            uploadErrors.push(
+                              `${file.name}: Unexpected upload error`
+                            );
                           }
-                        } catch (uploadErr) {
-                          console.error('Error uploading file:', file.name, uploadErr);
+                        }
+
+                        if (uploadedAttachments.length > 0) {
+                          toast.success(
+                            `Uploaded ${uploadedAttachments.length} file(s)`
+                          );
+                        } else if (newTask.attachments.length > 0) {
+                          toast.warning(
+                            'Could not upload attachments. Creating task without them.'
+                          );
+                        }
+
+                        if (uploadErrors.length > 0) {
+                          console.error(
+                            'Attachment upload errors:',
+                            uploadErrors
+                          );
+                          toast.error(
+                            uploadErrors[0] ||
+                              'Some attachments failed to upload'
+                          );
                         }
                       }
 
-                      if (uploadedAttachments.length > 0) {
-                        toast.success(`Uploaded ${uploadedAttachments.length} file(s)`);
-                      } else if (newTask.attachments.length > 0) {
-                        toast.warning('Could not upload attachments. Creating task without them.');
+                      let dueDateValue = newTask.dueDate;
+                      if (isRecurring && !dueDateValue) {
+                        const baseDate = parseLocalDate(startDateValue);
+                        baseDate.setDate(
+                          baseDate.getDate() + newTask.daysUntilDue
+                        );
+                        dueDateValue = toDateString(baseDate);
                       }
-                    }
 
-                    const taskPayload: CreateTaskData = {
-                      ...newTask,
-                      attachments: uploadedAttachments,
-                    };
+                      const taskPayload: CreateTaskData = {
+                        title: newTask.title,
+                        description: newTask.description,
+                        assignee: primaryAssigneeId,
+                        assigneeIds: newTask.assigneeIds,
+                        organization: newTask.organization,
+                        priority: newTask.priority,
+                        dueDate: dueDateValue || '',
+                        dueTime: newTask.dueTime || undefined,
+                        tags: newTask.tags,
+                        subtasks: newTask.subtasks,
+                        attachments: uploadedAttachments,
+                        recurringTemplateId,
+                        isRecurringInstance: isRecurring ? true : undefined,
+                      };
 
-                    const res = await createTask(taskPayload);
-                    if (res.success) {
-                      toast.success('Task created successfully');
-                      const updatedTasks = await getTasks();
-                      setTaskList(updatedTasks as unknown as Task[]);
-                      setShowCreateModal(false);
-                      setNewTask({
-                        title: '',
-                        description: '',
-                        assignee: '',
-                        organization: '',
-                        priority: 'Medium',
-                        dueDate: '',
-                        dueTime: '',
-                        tags: [],
-                        subtasks: [],
-                        attachments: [],
-                      });
+                      const res = await createTask(taskPayload);
+                      if (res.success) {
+                        toast.success(
+                          isRecurring
+                            ? 'Recurring task scheduled. First instance created.'
+                            : 'Task created successfully'
+                        );
+                        const updatedTasks = await getTasks();
+                        setTaskList(updatedTasks as unknown as Task[]);
+                      } else {
+                        toast.error(res.error || 'Failed to create task');
+                        return;
+                      }
                     } else {
-                      toast.error(res.error || 'Failed to create task');
+                      toast.success('Recurring task scheduled.');
                     }
+
+                    setShowCreateModal(false);
+                    setNewTask({
+                      title: '',
+                      description: '',
+                      assignee: '',
+                      assigneeIds: [],
+                      organization: '',
+                      priority: 'Medium',
+                      dueDate: '',
+                      dueTime: '',
+                      tags: [],
+                      subtasks: [],
+                      attachments: [],
+                      isRecurring: false,
+                      recurrencePattern: 'weekly',
+                      recurrenceStartDate: '',
+                      recurrenceDays: [],
+                      daysUntilDue: 1,
+                    });
                   } catch {
                     toast.error('An unexpected error occurred');
                   }
@@ -1253,7 +1832,7 @@ export default function TaskManagementPage() {
               <div className="flex flex-1 items-start gap-3">
                 <input
                   type="checkbox"
-                  checked={selectedTask.status === 'Completed'}
+                  checked={selectedTask.status === 'DONE'}
                   onChange={() => toggleTaskCompletion(selectedTask.id)}
                   className="mt-1 h-4 w-4 rounded border-border/40 text-primary focus:ring-primary"
                 />
@@ -1265,7 +1844,7 @@ export default function TaskManagementPage() {
                     <span
                       className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-medium ${selectedTask.statusColor}`}
                     >
-                      {selectedTask.status}
+                      {getStatusLabel(selectedTask)}
                     </span>
                     <span
                       className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-medium ${selectedTask.priorityColor}`}
@@ -1358,8 +1937,8 @@ export default function TaskManagementPage() {
 
               {/* Task Details Grid */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {/* Assignee */}
-                <div className="flex items-center gap-3">
+                {/* Assignees */}
+                <div className="flex items-start gap-3">
                   <div className="rounded-full bg-muted/50 p-2">
                     <User className="h-4 w-4 text-muted-foreground" />
                   </div>
@@ -1367,16 +1946,39 @@ export default function TaskManagementPage() {
                     <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
                       Assigned To
                     </p>
-                    <div className="flex items-center gap-2">
-                      <img
-                        src={selectedTask.assignee.avatar}
-                        alt={selectedTask.assignee.name}
-                        className="h-5 w-5 rounded-full ring-2 ring-white"
-                      />
-                      <p className="text-sm font-medium text-gray-800">
-                        {selectedTask.assignee.name}
+                    {selectedAssignees.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">
+                        No assignees
                       </p>
-                    </div>
+                    ) : (
+                      <div className="flex flex-col gap-1">
+                        {selectedAssignees.map((assignee, index) => {
+                          const isPrimary = assignee.role
+                            ? assignee.role === 'primary'
+                            : index === 0;
+                          return (
+                            <div
+                              key={assignee.id ?? `${assignee.name}-${index}`}
+                              className="flex items-center gap-2"
+                            >
+                              <img
+                                src={assignee.avatar}
+                                alt={assignee.name}
+                                className="h-5 w-5 rounded-full ring-2 ring-white"
+                              />
+                              <p className="text-sm font-medium text-gray-800">
+                                {assignee.name}
+                              </p>
+                              {isPrimary ? (
+                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                                  Primary
+                                </span>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                     <p className="text-xs text-muted-foreground">
                       {selectedTask.assignee.department}
                     </p>
@@ -1393,7 +1995,7 @@ export default function TaskManagementPage() {
                       Due Date
                     </p>
                     <p
-                      className={`text-sm font-medium ${selectedTask.status === 'Overdue' ? 'text-red-600' : 'text-gray-800'}`}
+                      className={`text-sm font-medium ${isTaskOverdue(selectedTask) ? 'text-red-600' : 'text-gray-800'}`}
                     >
                       {new Date(selectedTask.dueDate).toLocaleDateString(
                         'en-US',
@@ -1406,7 +2008,7 @@ export default function TaskManagementPage() {
                       )}
                     </p>
                     <p
-                      className={`text-xs ${selectedTask.status === 'Overdue' ? 'text-red-600' : 'text-muted-foreground'}`}
+                      className={`text-xs ${isTaskOverdue(selectedTask) ? 'text-red-600' : 'text-muted-foreground'}`}
                     >
                       {selectedTask.dueIn}
                     </p>
@@ -1447,14 +2049,14 @@ export default function TaskManagementPage() {
                     <span
                       className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${selectedTask.statusColor}`}
                     >
-                      {selectedTask.status}
+                      {getStatusLabel(selectedTask)}
                     </span>
                   </div>
                 </div>
               </div>
 
               {/* Progress Bar */}
-              {selectedTask.status === 'In Progress' && (
+              {selectedTask.status === 'IN_PROGRESS' && (
                 <div>
                   <div className="mb-2 flex items-center justify-between">
                     <h4 className="text-xs font-medium text-gray-700">
@@ -1611,10 +2213,14 @@ export default function TaskManagementPage() {
                   ))}
                   <div className="flex items-start gap-3 border-t border-border/40 pt-2">
                     <img
-                      src={
-                        userProfile?.avatar_url ||
-                        `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile?.employee_id || userProfile?.email || userProfile?.full_name || 'User'}`
-                      }
+                      src={getUserAvatarUrl({
+                        avatar_url: userProfile?.avatar_url ?? null,
+                        employee_id: userProfile?.employee_id ?? null,
+                        email: userProfile?.email ?? null,
+                        full_name: userProfile?.full_name ?? null,
+                        gender: userProfile?.gender ?? null,
+                        role: userProfile?.role ?? null,
+                      })}
                       alt="You"
                       className="h-8 w-8 flex-shrink-0 rounded-full ring-2 ring-white"
                     />
@@ -1670,7 +2276,7 @@ export default function TaskManagementPage() {
                       <p className="text-xs text-gray-800">
                         Task created by{' '}
                         <span className="font-medium">
-                          {(selectedTask as any).creator?.name || 'Admin'}
+                          {selectedTask.creator?.name || 'Admin'}
                         </span>
                       </p>
                       <p className="mt-0.5 text-[10px] text-muted-foreground">
@@ -1710,7 +2316,7 @@ export default function TaskManagementPage() {
                       </p>
                     </div>
                   </div>
-                  {selectedTask.status === 'In Progress' && (
+                  {selectedTask.status === 'IN_PROGRESS' && (
                     <div className="flex items-start gap-3">
                       <div className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-emerald-500"></div>
                       <div className="flex-1">

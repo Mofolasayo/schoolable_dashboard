@@ -3,90 +3,126 @@
 import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { Task, CreateTaskData } from '@/app/types/tasks';
+import { getSuperAdminAvatarUrl, getUserAvatarUrl } from '@/lib/avatar';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 
 async function getAuthToken(): Promise<string | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get('admin-auth-token')?.value || null;
-  console.log('🔐 Tasks getAuthToken:', token ? `Found (${token.substring(0, 20)}...)` : 'NOT FOUND');
-  console.log('   All cookies:', cookieStore.getAll().map(c => c.name).join(', '));
+  console.log(
+    '🔐 Tasks getAuthToken:',
+    token ? `Found (${token.substring(0, 20)}...)` : 'NOT FOUND'
+  );
+  console.log(
+    '   All cookies:',
+    cookieStore
+      .getAll()
+      .map((c) => c.name)
+      .join(', ')
+  );
   return token;
 }
 
-// Super Admin avatar seed for consistent identity
-const SUPER_ADMIN_AVATAR_SEED = 'schoolable-super-admin-2026';
-
-// Helper to generate avatar URL
-function generateAvatarUrl(profile: {
-  gender?: string | null;
-  employee_id?: string | null;
-  email?: string | null;
-  full_name?: string | null;
-  avatar_url?: string | null;
-  role?: string | null;
-}): string {
-  if (profile.avatar_url) return profile.avatar_url;
-
-  // Check if this is a super admin
-  const role = profile.role?.toLowerCase() || '';
-  if (role === 'admin' || role === 'super_admin' || role === 'superadmin') {
-    return `https://api.dicebear.com/7.x/personas/svg?seed=${SUPER_ADMIN_AVATAR_SEED}&backgroundColor=c0aede`;
+function normalizeTaskStatus(status?: string | null): Task['status'] {
+  const normalized = (status || '').trim().toUpperCase();
+  switch (normalized) {
+    case 'DONE':
+    case 'COMPLETED':
+      return 'DONE';
+    case 'IN_PROGRESS':
+    case 'IN PROGRESS':
+      return 'IN_PROGRESS';
+    case 'REVIEW':
+      return 'REVIEW';
+    case 'CANCELLED':
+    case 'CANCELED':
+      return 'CANCELLED';
+    case 'TODO':
+    case 'PENDING':
+    default:
+      return 'TODO';
   }
-
-  const gender = profile.gender?.toLowerCase();
-  let style = 'bottts';
-  if (gender === 'male') style = 'adventurer';
-  else if (gender === 'female') style = 'adventurer-neutral';
-
-  const seed = profile.employee_id || profile.email || profile.full_name || 'User';
-  return `https://api.dicebear.com/7.x/${style}/svg?seed=${seed}`;
 }
 
 // Transform backend response to frontend Task type
 function transformTask(t: Record<string, unknown>): Task {
   const assignee = t.assignee as Record<string, unknown> | null;
+  const assignees = Array.isArray(t.assignees)
+    ? (t.assignees as Array<Record<string, unknown>>)
+    : [];
   const creator = t.creator as Record<string, unknown> | null;
   const subtasks = (t.subtasks as Array<Record<string, unknown>>) || [];
   const comments = (t.comments as Array<Record<string, unknown>>) || [];
   const attachments = (t.attachments as Array<Record<string, unknown>>) || [];
 
+  const mappedAssignees = assignees.map((item) => {
+    const name = (item.full_name as string) || 'Unassigned';
+    return {
+      id: item.id as string,
+      name,
+      avatar: getUserAvatarUrl({
+        avatar_url: item.avatar_url as string,
+        gender: item.gender as string,
+        employee_id: item.employee_id as string,
+        email: item.email as string,
+        full_name: item.full_name as string,
+        role: item.role as string,
+      }),
+      department:
+        (item.department as string) || (t.organization as string) || '',
+      role: item.role as string | undefined,
+    };
+  });
+
+  const fallbackAssignee = {
+    id: assignee?.id as string,
+    name: (assignee?.full_name as string) || 'Unassigned',
+    avatar: getUserAvatarUrl({
+      avatar_url: assignee?.avatar_url as string,
+      gender: assignee?.gender as string,
+      employee_id: assignee?.employee_id as string,
+      email: assignee?.email as string,
+      full_name: assignee?.full_name as string,
+      role: assignee?.role as string,
+    }),
+    department:
+      (assignee?.department as string) || (t.organization as string) || '',
+  };
+
+  const primaryAssignee =
+    mappedAssignees.find((item) => item.role === 'primary') ||
+    mappedAssignees[0] ||
+    fallbackAssignee;
+
   return {
     id: t.id as number,
     title: (t.title as string) || '',
     description: (t.description as string) || '',
-    assignee: {
-      id: assignee?.id as string,
-      name: (assignee?.full_name as string) || 'Unassigned',
-      avatar: generateAvatarUrl({
-        avatar_url: assignee?.avatar_url as string,
-        gender: assignee?.gender as string,
-        employee_id: assignee?.employee_id as string,
-        email: assignee?.email as string,
-        full_name: assignee?.full_name as string,
-        role: assignee?.role as string,
-      }),
-      department: (assignee?.department as string) || (t.organization as string) || '',
-    },
-    creator: creator ? {
-      id: creator?.id as string,
-      name: (creator?.full_name as string) || 'Admin',
-      avatar: generateAvatarUrl({
-        avatar_url: creator?.avatar_url as string,
-        gender: creator?.gender as string,
-        employee_id: creator?.employee_id as string,
-        email: creator?.email as string,
-        full_name: creator?.full_name as string,
-        role: creator?.role as string,
-      }),
-    } : {
-      id: undefined,
-      name: 'Admin',
-      avatar: `https://api.dicebear.com/7.x/personas/svg?seed=${SUPER_ADMIN_AVATAR_SEED}&backgroundColor=c0aede`,
-    },
-    organization: (t.organization as string) || (assignee?.department as string) || '',
+    assignee: primaryAssignee,
+    assignees: mappedAssignees.length > 0 ? mappedAssignees : [primaryAssignee],
+    creator: creator
+      ? {
+          id: creator?.id as string,
+          name: (creator?.full_name as string) || 'Admin',
+          avatar: getUserAvatarUrl({
+            avatar_url: creator?.avatar_url as string,
+            gender: creator?.gender as string,
+            employee_id: creator?.employee_id as string,
+            email: creator?.email as string,
+            full_name: creator?.full_name as string,
+            role: creator?.role as string,
+          }),
+        }
+      : {
+          id: undefined,
+          name: 'Admin',
+          avatar: getSuperAdminAvatarUrl(),
+        },
+    organization:
+      (t.organization as string) || primaryAssignee.department || '',
     priority: (t.priority as Task['priority']) || 'Medium',
-    status: (t.status as Task['status']) || 'Pending',
+    status: normalizeTaskStatus(t.status as string | undefined),
     dueDate: t.due_date as string,
     tags: (t.tags as string[]) || [],
     progress: (t.progress as number) || 0,
@@ -108,7 +144,7 @@ function transformTask(t: Record<string, unknown>): Task {
       return {
         id: c.id as number,
         author: (author?.full_name as string) || 'Unknown',
-        avatar: generateAvatarUrl({
+        avatar: getUserAvatarUrl({
           avatar_url: author?.avatar_url as string,
           gender: author?.gender as string,
           employee_id: author?.employee_id as string,
@@ -136,7 +172,7 @@ export async function getTasks(): Promise<Task[]> {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
       },
       cache: 'no-store',
     });
@@ -147,7 +183,8 @@ export async function getTasks(): Promise<Task[]> {
     }
 
     const data = await response.json();
-    return (data as Array<Record<string, unknown>>).map(transformTask);
+    const items = Array.isArray(data) ? data : data?.items || [];
+    return (items as Array<Record<string, unknown>>).map(transformTask);
   } catch (error) {
     console.error('Error fetching tasks:', error);
     return [];
@@ -165,24 +202,37 @@ export async function createTask(data: CreateTaskData) {
   }
 
   try {
+    const assigneeIds = (data.assigneeIds || []).filter(Boolean);
+    const primaryAssigneeId = data.assignee || assigneeIds[0] || null;
+
     const response = await fetch(`${API_URL}/tasks`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         title: data.title,
         description: data.description,
-        assigneeId: data.assignee || null,
+        assigneeId: primaryAssigneeId,
+        assigneeIds: assigneeIds.length > 0 ? assigneeIds : null,
         organization: data.organization,
         priority: data.priority,
         dueDate: data.dueDate ? new Date(data.dueDate).toISOString() : null,
+        dueTime: data.dueTime || null,
         tags: data.tags,
         subtasks: data.subtasks.map((s) => ({ title: s.title })),
         attachments: data.attachments
-          .filter((a): a is { name: string; size: number; type: string; url: string; path: string } =>
-            !('lastModified' in a)
+          .filter(
+            (
+              a
+            ): a is {
+              name: string;
+              size: number;
+              type: string;
+              url: string;
+              path: string;
+            } => !('lastModified' in a)
           )
           .map((a) => ({
             name: a.name,
@@ -191,6 +241,8 @@ export async function createTask(data: CreateTaskData) {
             url: a.url,
             path: a.path,
           })),
+        recurringTemplateId: data.recurringTemplateId || null,
+        isRecurringInstance: data.isRecurringInstance ?? null,
       }),
     });
 
@@ -209,6 +261,89 @@ export async function createTask(data: CreateTaskData) {
   }
 }
 
+export type RecurringTaskTemplateRequest = {
+  title: string;
+  description?: string;
+  defaultPriority?: string;
+  defaultAssigneeId?: string;
+  organization?: string;
+  tags?: string[];
+  recurrencePattern: 'daily' | 'weekly' | 'biweekly' | 'monthly';
+  recurrenceDay?: number;
+  recurrenceDays?: number[];
+  dueTime?: string;
+  daysUntilDue?: number;
+  nextOccurrence?: string;
+};
+
+export async function createRecurringTaskTemplate(
+  data: RecurringTaskTemplateRequest
+) {
+  const token = await getAuthToken();
+
+  if (!token) {
+    return { success: false, error: 'Unauthorized' };
+  }
+
+  try {
+    const normalizeString = (value?: string | null) => {
+      if (!value) return undefined;
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
+    };
+
+    const payload = {
+      title: data.title,
+      description: normalizeString(data.description),
+      defaultPriority: normalizeString(data.defaultPriority),
+      defaultAssigneeId: normalizeString(data.defaultAssigneeId),
+      organization: normalizeString(data.organization),
+      tags: data.tags && data.tags.length > 0 ? data.tags : undefined,
+      recurrencePattern: data.recurrencePattern,
+      recurrenceDay: data.recurrenceDay ?? undefined,
+      recurrenceDays:
+        data.recurrenceDays && data.recurrenceDays.length > 0
+          ? data.recurrenceDays
+          : undefined,
+      dueTime: normalizeString(data.dueTime),
+      daysUntilDue: data.daysUntilDue,
+      nextOccurrence: normalizeString(data.nextOccurrence),
+    };
+
+    const response = await fetch(`${API_URL}/tasks/recurring`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = 'Failed to create recurring task';
+
+      try {
+        const parsed = JSON.parse(errorText);
+        errorMessage = parsed?.error || parsed?.message || errorMessage;
+      } catch {
+        if (errorText.trim().length > 0) {
+          errorMessage = errorText;
+        }
+      }
+
+      console.error('Create recurring task error:', response.status, errorText);
+      return { success: false, error: errorMessage };
+    }
+
+    const template = await response.json();
+    return { success: true, template };
+  } catch (error) {
+    console.error('Create recurring task error:', error);
+    return { success: false, error: 'Network error' };
+  }
+}
+
 export async function createTaskComment(taskId: number, text: string) {
   const token = await getAuthToken();
 
@@ -221,7 +356,7 @@ export async function createTaskComment(taskId: number, text: string) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ content: text }),
     });
@@ -239,7 +374,10 @@ export async function createTaskComment(taskId: number, text: string) {
   }
 }
 
-export async function updateSubtaskStatus(subtaskId: number, completed: boolean) {
+export async function updateSubtaskStatus(
+  subtaskId: number,
+  completed: boolean
+) {
   const token = await getAuthToken();
 
   if (!token) {
@@ -251,14 +389,17 @@ export async function updateSubtaskStatus(subtaskId: number, completed: boolean)
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ completed }),
     });
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      return { success: false, error: error.error || 'Failed to update subtask' };
+      return {
+        success: false,
+        error: error.error || 'Failed to update subtask',
+      };
     }
 
     revalidatePath('/dashboard/tasks');
@@ -275,7 +416,10 @@ export async function recalculateTaskProgress(_taskId: number) {
   revalidatePath('/dashboard/tasks');
 }
 
-export async function updateTaskDescription(taskId: number, description: string) {
+export async function updateTaskDescription(
+  taskId: number,
+  description: string
+) {
   const token = await getAuthToken();
 
   if (!token) {
@@ -287,14 +431,17 @@ export async function updateTaskDescription(taskId: number, description: string)
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ description }),
     });
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      return { success: false, error: error.error || 'Failed to update description' };
+      return {
+        success: false,
+        error: error.error || 'Failed to update description',
+      };
     }
 
     revalidatePath('/dashboard/tasks');
@@ -317,7 +464,7 @@ export async function deleteTask(taskId: number) {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
       },
     });
 
@@ -341,22 +488,32 @@ export async function updateTaskStatus(taskId: number, status: string) {
     return { success: false, error: 'Unauthorized' };
   }
 
-  // Set progress based on status
-  const progress = status === 'Completed' ? 100 : status === 'Pending' ? 0 : undefined;
+  const normalizedStatus = normalizeTaskStatus(status);
+  const progressMap: Record<Task['status'], number> = {
+    TODO: 0,
+    IN_PROGRESS: 50,
+    REVIEW: 80,
+    DONE: 100,
+    CANCELLED: 0,
+  };
+  const progress = progressMap[normalizedStatus];
 
   try {
     const response = await fetch(`${API_URL}/tasks/${taskId}/status`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ status, progress }),
+      body: JSON.stringify({ status: normalizedStatus, progress }),
     });
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      return { success: false, error: error.error || 'Failed to update status' };
+      return {
+        success: false,
+        error: error.error || 'Failed to update status',
+      };
     }
 
     revalidatePath('/dashboard/tasks');
@@ -372,7 +529,10 @@ export async function updateTaskStatus(taskId: number, status: string) {
 /**
  * Check if storage service is available
  */
-export async function checkStorageStatus(): Promise<{ available: boolean; provider: string }> {
+export async function checkStorageStatus(): Promise<{
+  available: boolean;
+  provider: string;
+}> {
   try {
     const response = await fetch(`${API_URL}/storage/status`, {
       method: 'GET',
@@ -398,7 +558,12 @@ export async function uploadTaskAttachment(
   file: File
 ): Promise<{
   success: boolean;
-  data?: { url: string; publicId: string; originalFilename: string; size: number };
+  data?: {
+    url: string;
+    publicId: string;
+    originalFilename: string;
+    size: number;
+  };
   error?: string;
 }> {
   const token = await getAuthToken();
@@ -411,13 +576,16 @@ export async function uploadTaskAttachment(
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await fetch(`${API_URL}/storage/tasks/${taskId}/attachment`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-      body: formData,
-    });
+    const response = await fetch(
+      `${API_URL}/storage/tasks/${taskId}/attachment`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      }
+    );
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
@@ -447,7 +615,13 @@ export async function uploadTaskAttachment(
  */
 export async function addTaskAttachment(
   taskId: number,
-  attachment: { name: string; size: string; type: string; url: string; path?: string }
+  attachment: {
+    name: string;
+    size: string;
+    type: string;
+    url: string;
+    path?: string;
+  }
 ) {
   const token = await getAuthToken();
 
@@ -460,14 +634,17 @@ export async function addTaskAttachment(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(attachment),
     });
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      return { success: false, error: error.error || 'Failed to add attachment' };
+      return {
+        success: false,
+        error: error.error || 'Failed to add attachment',
+      };
     }
 
     revalidatePath('/dashboard/tasks');
@@ -512,4 +689,3 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
-

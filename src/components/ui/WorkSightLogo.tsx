@@ -1,4 +1,4 @@
-export function SchoolableLogo({ className = 'h-8' }: { className?: string }) {
+export function WorkSightLogo({ className = 'h-8' }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 180 40"
@@ -24,7 +24,7 @@ export function SchoolableLogo({ className = 'h-8' }: { className?: string }) {
         fontWeight="600"
         fill="currentColor"
       >
-        Schoolable
+        WorkSight
       </text>
 
       {/* Gradient Definition */}

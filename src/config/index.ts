@@ -10,7 +10,7 @@ const featureFlags = {
 
 export const config = {
   app: {
-    name: 'Schoolable',
+    name: 'WorkSight',
     url: env.NEXT_PUBLIC_APP_URL,
   },
   api: {
@@ -21,5 +21,5 @@ export const config = {
 
 export type FeatureFlag = keyof typeof featureFlags;
 
-export { dashboardNavigation } from './navigation';
-export type { NavigationItem } from './navigation';
+export { dashboardNavigation, dashboardNavigationSections } from './navigation';
+export type { NavigationItem, NavigationSectionKey } from './navigation';

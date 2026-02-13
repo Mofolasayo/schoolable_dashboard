@@ -1,19 +1,31 @@
 /**
- * Backend API Client for Schoolable Dashboard
+ * Backend API Client for WorkSight Dashboard
  * Handles all communication with the Java Spring Boot backend
  */
+import { logger } from '@/lib/logger';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 
-// Token storage (server-side uses cookies, but for server actions we need headers)
+// Token storage (server-side uses cookies, but for client requests we need headers)
 let authToken: string | null = null;
 
 export function setAuthToken(token: string | null) {
   authToken = token;
 }
 
+function getCookieValue(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  const value = match?.[1];
+  return value ? decodeURIComponent(value) : null;
+}
+
+function resolveAuthToken(): string | null {
+  return authToken || getCookieValue('admin-auth-token');
+}
+
 export function getAuthToken(): string | null {
-  return authToken;
+  return resolveAuthToken();
 }
 
 export class ApiError extends Error {
@@ -25,6 +37,51 @@ export class ApiError extends Error {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = parts[1]
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+      .padEnd(parts[1].length + ((4 - (parts[1].length % 4)) % 4), '=');
+    const json =
+      typeof window === 'undefined'
+        ? Buffer.from(payload, 'base64').toString('utf8')
+        : globalThis.atob(payload);
+    const decoded = JSON.parse(json);
+    if (!decoded || typeof decoded !== 'object') return null;
+    return decoded as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function isTokenExpired(token: string): boolean {
+  const payload = decodeJwtPayload(token);
+  if (!payload) return true;
+  const exp = payload.exp;
+  const expSeconds = typeof exp === 'number' ? exp : Number(exp);
+  if (!Number.isFinite(expSeconds)) return true;
+  return Date.now() >= expSeconds * 1000;
+}
+
+function extractErrorMessage(payload: unknown): string {
+  if (!payload) return 'An error occurred';
+  if (typeof payload === 'string') return payload;
+  if (typeof payload === 'object') {
+    const data = payload as Record<string, unknown>;
+    const direct = data.error ?? data.message ?? data.detail;
+    if (typeof direct === 'string') return direct;
+    if (direct && typeof direct === 'object') {
+      const nested = direct as Record<string, unknown>;
+      const nestedMessage = nested.message ?? nested.error;
+      if (typeof nestedMessage === 'string') return nestedMessage;
+    }
+  }
+  return 'An error occurred';
 }
 
 /**
@@ -42,8 +99,13 @@ async function apiRequest<T>(
   };
 
   // Add auth token if available
-  if (authToken) {
-    (headers as Record<string, string>)['Authorization'] = `Bearer ${authToken}`;
+  const token = resolveAuthToken();
+  if (token) {
+    if (isTokenExpired(token)) {
+      authToken = null;
+      throw new ApiError('Session expired', 401);
+    }
+    (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
   }
 
   try {
@@ -54,11 +116,11 @@ async function apiRequest<T>(
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new ApiError(
-        error.error || error.message || 'An error occurred',
-        response.status,
-        error
-      );
+      logger.warn('Backend request failed', {
+        endpoint,
+        status: response.status,
+      });
+      throw new ApiError(extractErrorMessage(error), response.status, error);
     }
 
     // Handle empty responses
@@ -70,6 +132,7 @@ async function apiRequest<T>(
     if (error instanceof ApiError) {
       throw error;
     }
+    logger.error('Backend request error', { endpoint, error });
     throw new ApiError('Network error', 0, error);
   }
 }
@@ -88,7 +151,10 @@ export interface LoginResponse {
   };
 }
 
-export async function login(email: string, password: string): Promise<LoginResponse> {
+export async function login(
+  email: string,
+  password: string
+): Promise<LoginResponse> {
   const response = await apiRequest<LoginResponse>('/auth/login', {
     method: 'POST',
     body: JSON.stringify({ email, password }),
@@ -106,14 +172,18 @@ export async function getProfile() {
   return apiRequest<StaffProfile>('/profile/me');
 }
 
-export async function updateProfile(data: Partial<StaffProfile>): Promise<StaffProfile> {
+export async function updateProfile(
+  data: Partial<StaffProfile>
+): Promise<StaffProfile> {
   return apiRequest<StaffProfile>('/profile/update', {
     method: 'POST',
     body: JSON.stringify(data),
   });
 }
 
-export async function uploadAvatar(file: File): Promise<{ message: string; avatar_url: string }> {
+export async function uploadAvatar(
+  file: File
+): Promise<{ message: string; avatar_url: string }> {
   const formData = new FormData();
   formData.append('avatar', file);
 
@@ -125,15 +195,21 @@ export async function uploadAvatar(file: File): Promise<{ message: string; avata
 
   // Note: We don't use apiRequest here because we need to send FormData
   // and let the browser set the Content-Type header (multipart/form-data)
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081'}/profile/avatar`, {
-    method: 'POST',
-    headers,
-    body: formData,
-  });
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081'}/profile/avatar`,
+    {
+      method: 'POST',
+      headers,
+      body: formData,
+    }
+  );
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new ApiError(error.error || error.message || 'Failed to upload avatar', response.status);
+    throw new ApiError(
+      error.error || error.message || 'Failed to upload avatar',
+      response.status
+    );
   }
 
   return response.json();
@@ -182,7 +258,9 @@ export interface DeleteProfileResponse {
  * Delete a staff profile (Admin only)
  * @param profileId - The UUID of the profile to delete
  */
-export async function deleteProfile(profileId: string): Promise<DeleteProfileResponse> {
+export async function deleteProfile(
+  profileId: string
+): Promise<DeleteProfileResponse> {
   return apiRequest<DeleteProfileResponse>(`/profile/${profileId}`, {
     method: 'DELETE',
   });
@@ -220,27 +298,36 @@ export async function getUnreadAnnouncements(): Promise<Announcement[]> {
   return apiRequest<Announcement[]>('/announcements/unread');
 }
 
-export async function createAnnouncement(data: CreateAnnouncementData): Promise<Announcement> {
+export async function createAnnouncement(
+  data: CreateAnnouncementData
+): Promise<Announcement> {
   return apiRequest<Announcement>('/announcements', {
     method: 'POST',
     body: JSON.stringify(data),
   });
 }
 
-export async function updateAnnouncement(id: string, data: Partial<CreateAnnouncementData>): Promise<Announcement> {
+export async function updateAnnouncement(
+  id: string,
+  data: Partial<CreateAnnouncementData>
+): Promise<Announcement> {
   return apiRequest<Announcement>(`/announcements/${id}`, {
     method: 'PUT',
     body: JSON.stringify(data),
   });
 }
 
-export async function deleteAnnouncement(id: string): Promise<{ success: boolean }> {
+export async function deleteAnnouncement(
+  id: string
+): Promise<{ success: boolean }> {
   return apiRequest<{ success: boolean }>(`/announcements/${id}`, {
     method: 'DELETE',
   });
 }
 
-export async function markAnnouncementAsRead(id: string): Promise<{ success: boolean }> {
+export async function markAnnouncementAsRead(
+  id: string
+): Promise<{ success: boolean }> {
   return apiRequest<{ success: boolean }>(`/announcements/${id}/read`, {
     method: 'POST',
   });
@@ -308,7 +395,13 @@ export interface CreateTaskData {
   dueTime?: string;
   tags: string[];
   subtasks: { title: string }[];
-  attachments: { name: string; size: string; type: string; url: string; path: string }[];
+  attachments: {
+    name: string;
+    size: string;
+    type: string;
+    url: string;
+    path: string;
+  }[];
 }
 
 export async function getTasks(): Promise<TaskData[]> {
@@ -326,21 +419,31 @@ export async function createTask(data: CreateTaskData): Promise<TaskData> {
   });
 }
 
-export async function updateTask(id: number, data: Partial<CreateTaskData & { status: string; progress: number }>): Promise<TaskData> {
+export async function updateTask(
+  id: number,
+  data: Partial<CreateTaskData & { status: string; progress: number }>
+): Promise<TaskData> {
   return apiRequest<TaskData>(`/tasks/${id}`, {
     method: 'PUT',
     body: JSON.stringify(data),
   });
 }
 
-export async function updateTaskStatus(id: number, status: string, progress?: number): Promise<TaskData> {
+export async function updateTaskStatus(
+  id: number,
+  status: string,
+  progress?: number
+): Promise<TaskData> {
   return apiRequest<TaskData>(`/tasks/${id}/status`, {
     method: 'PATCH',
     body: JSON.stringify({ status, progress }),
   });
 }
 
-export async function updateTaskDescription(id: number, description: string): Promise<{ success: boolean }> {
+export async function updateTaskDescription(
+  id: number,
+  description: string
+): Promise<{ success: boolean }> {
   return apiRequest<{ success: boolean }>(`/tasks/${id}/description`, {
     method: 'PATCH',
     body: JSON.stringify({ description }),
@@ -354,14 +457,20 @@ export async function deleteTask(id: number): Promise<{ success: boolean }> {
 }
 
 // Subtasks
-export async function addSubtask(taskId: number, title: string): Promise<TaskSubtask> {
+export async function addSubtask(
+  taskId: number,
+  title: string
+): Promise<TaskSubtask> {
   return apiRequest<TaskSubtask>(`/tasks/${taskId}/subtasks`, {
     method: 'POST',
     body: JSON.stringify({ title }),
   });
 }
 
-export async function updateSubtask(subtaskId: number, completed: boolean): Promise<{ success: boolean }> {
+export async function updateSubtask(
+  subtaskId: number,
+  completed: boolean
+): Promise<{ success: boolean }> {
   return apiRequest<{ success: boolean }>(`/tasks/subtasks/${subtaskId}`, {
     method: 'PATCH',
     body: JSON.stringify({ completed }),
@@ -369,7 +478,10 @@ export async function updateSubtask(subtaskId: number, completed: boolean): Prom
 }
 
 // Comments
-export async function addTaskComment(taskId: number, content: string): Promise<TaskComment> {
+export async function addTaskComment(
+  taskId: number,
+  content: string
+): Promise<TaskComment> {
   return apiRequest<TaskComment>(`/tasks/${taskId}/comments`, {
     method: 'POST',
     body: JSON.stringify({ content }),
@@ -378,7 +490,13 @@ export async function addTaskComment(taskId: number, content: string): Promise<T
 
 export async function addTaskAttachment(
   taskId: number,
-  attachment: { name: string; size: string; type: string; url: string; path: string }
+  attachment: {
+    name: string;
+    size: string;
+    type: string;
+    url: string;
+    path: string;
+  }
 ): Promise<TaskAttachment> {
   return apiRequest<TaskAttachment>(`/tasks/${taskId}/attachments`, {
     method: 'POST',
@@ -403,7 +521,7 @@ export interface AttendanceRecord {
   check_in: string | null;
   check_out: string | null;
   date: string;
-  status: 'present' | 'late' | 'absent' | 'excused';
+  status: 'present' | 'late' | 'absent';
   location: string | null;
   address: string | null;
   latitude: number | null;
@@ -421,7 +539,6 @@ export interface AttendanceMetrics {
   present: number;
   late: number;
   absent: number;
-  excused: number;
   total_checked_in: number;
   total_staff: number;
   pending: number;
@@ -480,7 +597,12 @@ export function formatCheckInStatus(checkIn: string | null): {
   isLate: boolean;
 } {
   if (!checkIn) {
-    return { time: '—', statusText: 'No check-in', isEarly: false, isLate: false };
+    return {
+      time: '—',
+      statusText: 'No check-in',
+      isEarly: false,
+      isLate: false,
+    };
   }
 
   const checkInDate = new Date(checkIn);
@@ -494,9 +616,19 @@ export function formatCheckInStatus(checkIn: string | null): {
   const diff = deadline - checkInMinutes;
 
   if (diff > 0) {
-    return { time, statusText: `${diff} min early`, isEarly: true, isLate: false };
+    return {
+      time,
+      statusText: `${diff} min early`,
+      isEarly: true,
+      isLate: false,
+    };
   } else if (diff < 0) {
-    return { time, statusText: `${Math.abs(diff)} min late`, isEarly: false, isLate: true };
+    return {
+      time,
+      statusText: `${Math.abs(diff)} min late`,
+      isEarly: false,
+      isLate: true,
+    };
   }
   return { time, statusText: 'On time', isEarly: true, isLate: false };
 }
@@ -534,6 +666,23 @@ export interface AuraResponse {
   lastUpdated: string;
 }
 
+export interface AuraTrendPoint {
+  weekNumber: number;
+  year: number;
+  weekStartDate: string;
+  auraScore: number | null;
+  teamwork: number | null;
+  initiative: number | null;
+  attitude: number | null;
+}
+
+export interface AuraTrendHistory {
+  employeeId: string;
+  weeks: AuraTrendPoint[];
+  averageAura: number | null;
+  totalWeeksRated: number | null;
+}
+
 export interface TeamAuraResponse {
   teamMembers: AuraResponse[];
   teamAverage: number;
@@ -555,8 +704,24 @@ export interface PeerFeedbackRequest {
 /**
  * Get Aura dashboard for an employee
  */
-export async function getAuraDashboard(employeeId: string): Promise<AuraResponse> {
-  return apiRequest<AuraResponse>(`/api/performance/aura/dashboard?employeeId=${employeeId}`);
+export async function getAuraDashboard(
+  employeeId: string
+): Promise<AuraResponse> {
+  return apiRequest<AuraResponse>(
+    `/api/performance/aura/dashboard?employeeId=${employeeId}`
+  );
+}
+
+/**
+ * Get weekly Aura trend for a specific employee (admin view)
+ */
+export async function getEmployeeAuraTrend(
+  employeeId: string,
+  limit = 12
+): Promise<AuraTrendHistory> {
+  return apiRequest<AuraTrendHistory>(
+    `/api/performance/employee/${employeeId}/trend?limit=${limit}`
+  );
 }
 
 /**
@@ -576,7 +741,9 @@ export async function getTeamAuraScores(): Promise<TeamAuraResponse> {
 /**
  * Submit peer feedback
  */
-export async function submitPeerFeedback(feedback: PeerFeedbackRequest): Promise<{ success: boolean }> {
+export async function submitPeerFeedback(
+  feedback: PeerFeedbackRequest
+): Promise<{ success: boolean }> {
   return apiRequest<{ success: boolean }>('/api/performance/peer-feedback', {
     method: 'POST',
     body: JSON.stringify(feedback),
@@ -650,8 +817,12 @@ export async function getAutoAuraDashboard(): Promise<AutoAuraResponse> {
 /**
  * Get auto-calculated Aura for a specific employee
  */
-export async function getEmployeeAutoAura(employeeId: string): Promise<AutoAuraResponse> {
-  return apiRequest<AutoAuraResponse>(`/api/performance/employee/${employeeId}/aura/auto`);
+export async function getEmployeeAutoAura(
+  employeeId: string
+): Promise<AutoAuraResponse> {
+  return apiRequest<AutoAuraResponse>(
+    `/api/performance/employee/${employeeId}/aura/auto`
+  );
 }
 
 /**
@@ -664,12 +835,17 @@ export async function getDepartmentKpis(): Promise<DepartmentKpisResponse> {
 /**
  * Trigger auto-recalculation for all employees (admin only)
  */
-export async function triggerAutoRecalculation(): Promise<{ message: string; note: string }> {
-  return apiRequest<{ message: string; note: string }>('/api/performance/auto-recalculate', {
-    method: 'POST',
-  });
+export async function triggerAutoRecalculation(): Promise<{
+  message: string;
+  note: string;
+}> {
+  return apiRequest<{ message: string; note: string }>(
+    '/api/performance/auto-recalculate',
+    {
+      method: 'POST',
+    }
+  );
 }
-
 
 // Default export for convenient importing
 // ==================== TRAINING RECORDS ====================
@@ -694,7 +870,9 @@ export interface TrainingRecord {
  * Get all pending certificates
  */
 export async function getPendingCertificates(): Promise<TrainingRecord[]> {
-  return apiRequest<TrainingRecord[]>('/api/performance/training-records/pending');
+  return apiRequest<TrainingRecord[]>(
+    '/api/performance/training-records/pending'
+  );
 }
 
 /**
@@ -703,7 +881,7 @@ export async function getPendingCertificates(): Promise<TrainingRecord[]> {
 export async function getAllCertificates(filters?: {
   quarter?: string;
   year?: number;
-  status?: string
+  status?: string;
 }): Promise<TrainingRecord[]> {
   const params = new URLSearchParams();
   if (filters?.quarter) params.append('quarter', filters.quarter);
@@ -711,33 +889,50 @@ export async function getAllCertificates(filters?: {
   if (filters?.status) params.append('status', filters.status);
 
   const queryString = params.toString() ? `?${params.toString()}` : '';
-  return apiRequest<TrainingRecord[]>(`/api/performance/training-records${queryString}`);
+  return apiRequest<TrainingRecord[]>(
+    `/api/performance/training-records${queryString}`
+  );
 }
 
 /**
  * Get certificates for a specific employee
  */
-export async function getEmployeeCertificates(employeeId: string): Promise<TrainingRecord[]> {
-  return apiRequest<TrainingRecord[]>(`/api/performance/training-records/employee/${employeeId}`);
+export async function getEmployeeCertificates(
+  employeeId: string
+): Promise<TrainingRecord[]> {
+  return apiRequest<TrainingRecord[]>(
+    `/api/performance/training-records/employee/${employeeId}`
+  );
 }
 
 /**
  * Approve a certificate
  */
-export async function approveCertificate(id: number): Promise<{ success: boolean }> {
-  return apiRequest<{ success: boolean }>(`/api/performance/training-records/${id}/approve`, {
-    method: 'POST',
-  });
+export async function approveCertificate(
+  id: number
+): Promise<{ success: boolean }> {
+  return apiRequest<{ success: boolean }>(
+    `/api/performance/training-records/${id}/approve`,
+    {
+      method: 'POST',
+    }
+  );
 }
 
 /**
  * Reject a certificate
  */
-export async function rejectCertificate(id: number, reason: string): Promise<{ success: boolean }> {
-  return apiRequest<{ success: boolean }>(`/api/performance/training-records/${id}/reject`, {
-    method: 'POST',
-    body: JSON.stringify({ reason }),
-  });
+export async function rejectCertificate(
+  id: number,
+  reason: string
+): Promise<{ success: boolean }> {
+  return apiRequest<{ success: boolean }>(
+    `/api/performance/training-records/${id}/reject`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }
+  );
 }
 
 // ==================== COMPLIANCE ====================
@@ -805,7 +1000,9 @@ export async function getComplianceMetrics(): Promise<ComplianceMetrics> {
 /**
  * Create a new compliance policy (Admin)
  */
-export async function createCompliancePolicy(policy: CreatePolicyRequest): Promise<CompliancePolicy> {
+export async function createCompliancePolicy(
+  policy: CreatePolicyRequest
+): Promise<CompliancePolicy> {
   return apiRequest<CompliancePolicy>('/compliance/policies', {
     method: 'POST',
     body: JSON.stringify(policy),
@@ -815,7 +1012,10 @@ export async function createCompliancePolicy(policy: CreatePolicyRequest): Promi
 /**
  * Update a compliance policy (Admin)
  */
-export async function updateCompliancePolicy(id: string, policy: Partial<CreatePolicyRequest>): Promise<CompliancePolicy> {
+export async function updateCompliancePolicy(
+  id: string,
+  policy: Partial<CreatePolicyRequest>
+): Promise<CompliancePolicy> {
   return apiRequest<CompliancePolicy>(`/compliance/policies/${id}`, {
     method: 'PUT',
     body: JSON.stringify(policy),
@@ -825,7 +1025,9 @@ export async function updateCompliancePolicy(id: string, policy: Partial<CreateP
 /**
  * Delete (deactivate) a compliance policy (Admin)
  */
-export async function deleteCompliancePolicy(id: string): Promise<{ message: string }> {
+export async function deleteCompliancePolicy(
+  id: string
+): Promise<{ message: string }> {
   return apiRequest<{ message: string }>(`/compliance/policies/${id}`, {
     method: 'DELETE',
   });
@@ -834,8 +1036,12 @@ export async function deleteCompliancePolicy(id: string): Promise<{ message: str
 /**
  * Get submissions for a policy (Admin)
  */
-export async function getComplianceSubmissions(policyId: string): Promise<ComplianceSubmission[]> {
-  return apiRequest<ComplianceSubmission[]>(`/compliance/policies/${policyId}/submissions`);
+export async function getComplianceSubmissions(
+  policyId: string
+): Promise<ComplianceSubmission[]> {
+  return apiRequest<ComplianceSubmission[]>(
+    `/compliance/policies/${policyId}/submissions`
+  );
 }
 
 /**
@@ -846,9 +1052,56 @@ export async function reviewComplianceSubmission(
   status: 'approved' | 'rejected',
   notes?: string
 ): Promise<{ message: string; status: string }> {
-  return apiRequest<{ message: string; status: string }>(`/compliance/submissions/${submissionId}/review`, {
-    method: 'PATCH',
-    body: JSON.stringify({ status, notes }),
+  return apiRequest<{ message: string; status: string }>(
+    `/compliance/submissions/${submissionId}/review`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ status, notes }),
+    }
+  );
+}
+
+// ================================
+// Notifications
+// ================================
+
+export interface NotificationItem {
+  id: number;
+  title: string;
+  body: string;
+  type: string;
+  referenceId?: string | null;
+  isRead: boolean;
+  sentAt: string;
+  readAt?: string | null;
+  data?: string | null;
+}
+
+export interface NotificationResponse {
+  notifications: NotificationItem[];
+  unreadCount: number;
+}
+
+export async function getNotifications(): Promise<NotificationResponse> {
+  return apiRequest<NotificationResponse>('/api/notifications');
+}
+
+export async function markNotificationRead(
+  notificationId: number
+): Promise<{ success: boolean }> {
+  return apiRequest<{ success: boolean }>(
+    `/api/notifications/${notificationId}/read`,
+    {
+      method: 'POST',
+    }
+  );
+}
+
+export async function markAllNotificationsRead(): Promise<{
+  success: boolean;
+}> {
+  return apiRequest<{ success: boolean }>('/api/notifications/mark-all-read', {
+    method: 'POST',
   });
 }
 
@@ -902,6 +1155,9 @@ const backendApi = {
   deleteCompliancePolicy,
   getComplianceSubmissions,
   reviewComplianceSubmission,
+  getNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
   setAuthToken,
   getAuthToken,
 };
@@ -933,6 +1189,8 @@ export interface AiInsightItem {
   year: number;
   kpiScore: number;
   summary: string;
+  scoreBreakdown?: Record<string, unknown> | null;
+  rawAiResponse?: Record<string, unknown> | null;
   insights: Record<string, unknown>;
   recommendations: Record<string, unknown>;
   riskAlerts: Record<string, unknown>;
@@ -954,7 +1212,10 @@ export interface TeamQuarterlyScore {
 /**
  * Get all team KPIs (admin view)
  */
-export async function getAllTeamKpis(quarter?: string, year?: number): Promise<{
+export async function getAllTeamKpis(
+  quarter?: string,
+  year?: number
+): Promise<{
   kpis: TeamKpi[];
   quarter: string;
   year: number;
@@ -968,7 +1229,10 @@ export async function getAllTeamKpis(quarter?: string, year?: number): Promise<{
 /**
  * Get all team quarterly scores (admin view)
  */
-export async function getAllTeamScores(quarter?: string, year?: number): Promise<{
+export async function getAllTeamScores(
+  quarter?: string,
+  year?: number
+): Promise<{
   quarter: string;
   year: number;
   teams: TeamQuarterlyScore[];
@@ -984,11 +1248,15 @@ export async function getAllTeamScores(quarter?: string, year?: number): Promise
 /**
  * Get all AI insights for a specific week (admin view)
  */
-export async function getAllWeeklyInsights(weekNumber: number, year: number): Promise<{
+export async function getAllWeeklyInsights(
+  weekNumber: number,
+  year: number
+): Promise<{
   insights: AiInsightItem[];
   weekNumber: number;
   year: number;
 }> {
-  return apiRequest(`/api/kpi/insights/all?weekNumber=${weekNumber}&year=${year}`);
+  return apiRequest(
+    `/api/kpi/insights/all?weekNumber=${weekNumber}&year=${year}`
+  );
 }
-

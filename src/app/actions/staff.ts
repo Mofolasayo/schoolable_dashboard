@@ -1,6 +1,7 @@
 'use server';
 
 import { cookies } from 'next/headers';
+import { getSuperAdminAvatarUrl } from '@/lib/avatar';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 
@@ -41,7 +42,7 @@ export async function getStaffProfiles(): Promise<StaffProfile[]> {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
       },
       cache: 'no-store',
     });
@@ -77,7 +78,7 @@ export async function getAllProfiles(): Promise<StaffProfile[]> {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
       },
       cache: 'no-store',
     });
@@ -98,12 +99,43 @@ export async function getAllProfiles(): Promise<StaffProfile[]> {
   }
 }
 
+export async function deleteProfile(
+  profileId: string
+): Promise<{ success: boolean; message?: string }> {
+  const token = await getAuthToken();
+
+  if (!token) {
+    throw new Error('Not authenticated');
+  }
+
+  const response = await fetch(`${API_URL}/profile/${profileId}`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.message || 'Failed to delete profile');
+  }
+
+  return response.json();
+}
+
 function generateAvatarUrl(profile: StaffProfile): string {
+  const role = profile.role?.toLowerCase() || '';
+  if (role === 'admin' || role === 'super_admin' || role === 'superadmin') {
+    return getSuperAdminAvatarUrl();
+  }
+
   const gender = profile.gender?.toLowerCase();
   let style = 'bottts';
   if (gender === 'male') style = 'adventurer';
   else if (gender === 'female') style = 'adventurer-neutral';
 
-  const seed = profile.employee_id || profile.email || profile.full_name || 'User';
+  const seed =
+    profile.employee_id || profile.email || profile.full_name || 'User';
   return `https://api.dicebear.com/7.x/${style}/svg?seed=${seed}`;
 }

@@ -35,14 +35,15 @@ import {
   Trash2,
 } from 'lucide-react';
 import {
-  getAuraDashboard,
-  getAllProfiles,
   getStaffProfiles,
   deleteProfile,
-  type AuraResponse,
   type StaffProfile,
+} from '@/app/actions/staff';
+import {
+  getAuraDashboard,
+  type AuraResponse,
   type PillarScores,
-} from '@/lib/api/backend';
+} from '@/app/actions/performance';
 import { toast } from 'sonner';
 
 // Types
@@ -123,6 +124,9 @@ export default function PerformancePage() {
     useState<TeamMemberWithAura | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const toAuraScore = (member: TeamMemberWithAura) =>
+    member.qgpa ?? (member.auraScore ?? 0) / 20;
+
   // Handle delete staff
   const handleDeleteClick = (employee: TeamMemberWithAura) => {
     setEmployeeToDelete(employee);
@@ -194,7 +198,8 @@ export default function PerformancePage() {
 
         // Filter out any admin users that might slip through
         const staffOnly = profiles.filter(
-          (p) => p.role?.toLowerCase() !== 'super_admin' &&
+          (p) =>
+            p.role?.toLowerCase() !== 'super_admin' &&
             p.role?.toLowerCase() !== 'admin' &&
             !p.full_name?.toLowerCase().includes('admin')
         );
@@ -225,15 +230,22 @@ export default function PerformancePage() {
 
         // Use top performer for spotlight
         const scoredMembers = membersWithAura.filter(
-          (m) => 'auraScore' in m && (m as TeamMemberWithAura).auraScore !== undefined
+          (m) =>
+            'auraScore' in m &&
+            (m as TeamMemberWithAura).auraScore !== undefined
         ) as TeamMemberWithAura[];
 
-        const sortedByScore = scoredMembers
-          .sort((a, b) => (b.auraScore ?? 0) - (a.auraScore ?? 0));
+        const sortedByScore = scoredMembers.sort(
+          (a, b) => (b.auraScore ?? 0) - (a.auraScore ?? 0)
+        );
 
         const topPerformer = sortedByScore[0];
 
-        if (topPerformer && topPerformer.auraScore !== undefined && topPerformer.pillars) {
+        if (
+          topPerformer &&
+          topPerformer.auraScore !== undefined &&
+          topPerformer.pillars
+        ) {
           setAuraData({
             employeeId: topPerformer.id,
             fullName: topPerformer.full_name || 'Unknown',
@@ -278,9 +290,10 @@ export default function PerformancePage() {
   const companyAverageScore =
     membersWithScores.length > 0
       ? Math.round(
-        membersWithScores.reduce((sum, m) => sum + (m.auraScore || 0), 0) /
-        membersWithScores.length
-      )
+          (membersWithScores.reduce((sum, m) => sum + toAuraScore(m), 0) /
+            membersWithScores.length) *
+            10
+        ) / 10
       : 0;
 
   // Calculate pillar averages from members with full data
@@ -288,77 +301,77 @@ export default function PerformancePage() {
   const pillarSummaries =
     membersWithPillars.length > 0
       ? [
-        {
-          name: 'Technical (25%)',
-          icon: <Target className="h-4 w-4" />,
-          averageScore: Math.round(
-            membersWithPillars.reduce(
-              (sum, m) => sum + (m.pillars?.technical?.score || 0),
-              0
-            ) / membersWithPillars.length
-          ),
-          trend: 'up' as const,
-        },
-        {
-          name: 'Behavioral (25%)',
-          icon: <Users className="h-4 w-4" />,
-          averageScore: Math.round(
-            membersWithPillars.reduce(
-              (sum, m) => sum + (m.pillars?.behavioral?.score || 0),
-              0
-            ) / membersWithPillars.length
-          ),
-          trend: 'stable' as const,
-        },
-        {
-          name: 'Culture Fit (25%)',
-          icon: <Star className="h-4 w-4" />,
-          averageScore: Math.round(
-            membersWithPillars.reduce(
-              (sum, m) => sum + (m.pillars?.cultureFit?.score || 0),
-              0
-            ) / membersWithPillars.length
-          ),
-          trend: 'up' as const,
-        },
-        {
-          name: 'Growth & Learning (25%)',
-          icon: <TrendingUp className="h-4 w-4" />,
-          averageScore: Math.round(
-            membersWithPillars.reduce(
-              (sum, m) => sum + (m.pillars?.growthLearning?.score || 0),
-              0
-            ) / membersWithPillars.length
-          ),
-          trend: 'up' as const,
-        },
-      ]
+          {
+            name: 'Technical (25%)',
+            icon: <Target className="h-4 w-4" />,
+            averageScore: Math.round(
+              membersWithPillars.reduce(
+                (sum, m) => sum + (m.pillars?.technical?.score || 0),
+                0
+              ) / membersWithPillars.length
+            ),
+            trend: 'up' as const,
+          },
+          {
+            name: 'Behavioral (25%)',
+            icon: <Users className="h-4 w-4" />,
+            averageScore: Math.round(
+              membersWithPillars.reduce(
+                (sum, m) => sum + (m.pillars?.behavioral?.score || 0),
+                0
+              ) / membersWithPillars.length
+            ),
+            trend: 'stable' as const,
+          },
+          {
+            name: 'Culture Fit (25%)',
+            icon: <Star className="h-4 w-4" />,
+            averageScore: Math.round(
+              membersWithPillars.reduce(
+                (sum, m) => sum + (m.pillars?.cultureFit?.score || 0),
+                0
+              ) / membersWithPillars.length
+            ),
+            trend: 'up' as const,
+          },
+          {
+            name: 'Growth & Learning (25%)',
+            icon: <TrendingUp className="h-4 w-4" />,
+            averageScore: Math.round(
+              membersWithPillars.reduce(
+                (sum, m) => sum + (m.pillars?.growthLearning?.score || 0),
+                0
+              ) / membersWithPillars.length
+            ),
+            trend: 'up' as const,
+          },
+        ]
       : [
-        {
-          name: 'Technical (25%)',
-          icon: <Target className="h-4 w-4" />,
-          averageScore: 0,
-          trend: 'stable' as const,
-        },
-        {
-          name: 'Behavioral (25%)',
-          icon: <Users className="h-4 w-4" />,
-          averageScore: 0,
-          trend: 'stable' as const,
-        },
-        {
-          name: 'Culture Fit (25%)',
-          icon: <Star className="h-4 w-4" />,
-          averageScore: 0,
-          trend: 'stable' as const,
-        },
-        {
-          name: 'Growth & Learning (25%)',
-          icon: <TrendingUp className="h-4 w-4" />,
-          averageScore: 0,
-          trend: 'stable' as const,
-        },
-      ];
+          {
+            name: 'Technical (25%)',
+            icon: <Target className="h-4 w-4" />,
+            averageScore: 0,
+            trend: 'stable' as const,
+          },
+          {
+            name: 'Behavioral (25%)',
+            icon: <Users className="h-4 w-4" />,
+            averageScore: 0,
+            trend: 'stable' as const,
+          },
+          {
+            name: 'Culture Fit (25%)',
+            icon: <Star className="h-4 w-4" />,
+            averageScore: 0,
+            trend: 'stable' as const,
+          },
+          {
+            name: 'Growth & Learning (25%)',
+            icon: <TrendingUp className="h-4 w-4" />,
+            averageScore: 0,
+            trend: 'stable' as const,
+          },
+        ];
 
   if (isLoading) {
     return (
@@ -391,7 +404,7 @@ export default function PerformancePage() {
   ).length;
   const promotionCount = teamMembers.filter((m) => m.grade === 'A').length;
   const topPerformerCount = teamMembers.filter(
-    (m) => (m.auraScore || 0) >= 90
+    (m) => toAuraScore(m) >= 4.5
   ).length;
 
   // Group by department
@@ -399,8 +412,8 @@ export default function PerformancePage() {
     (acc, curr) => {
       const dept = curr.department || 'Unassigned';
       if (!acc[dept]) acc[dept] = { sum: 0, count: 0 };
-      if (curr.auraScore) {
-        acc[dept].sum += curr.auraScore;
+      if (curr.auraScore !== undefined || curr.qgpa !== undefined) {
+        acc[dept].sum += toAuraScore(curr);
         acc[dept].count += 1;
       }
       return acc;
@@ -424,7 +437,7 @@ export default function PerformancePage() {
             Performance Management
           </h1>
           <p className="mt-1 text-gray-500">
-            Aura Score System - 5 Pillars × Weighted Contributions = 100%
+            Aura score derived from weighted pillar averages
           </p>
         </div>
         <div className="flex gap-3">
@@ -561,7 +574,9 @@ export default function PerformancePage() {
               <CardContent className="pt-6">
                 <div className="text-sm text-gray-500">Avg Aura Score</div>
                 <div className="mt-1 text-3xl font-bold text-indigo-600">
-                  {companyAverageScore > 0 ? companyAverageScore : '--'}
+                  {companyAverageScore > 0
+                    ? companyAverageScore.toFixed(1)
+                    : '--'}
                 </div>
               </CardContent>
             </Card>
@@ -617,18 +632,20 @@ export default function PerformancePage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
-                      {member.auraScore && member.grade ? (
+                      {member.grade &&
+                      (member.qgpa !== undefined ||
+                        member.auraScore !== undefined) ? (
                         <div className="flex items-center gap-3">
                           <div className="text-right">
                             <div className="text-lg font-bold text-gray-900">
-                              {Math.round(member.auraScore)}
+                              {toAuraScore(member).toFixed(1)}
                             </div>
                             <div className="text-xs text-gray-500">
                               Aura Score
                             </div>
                           </div>
                           <AuraScoreBadge
-                            score={member.auraScore}
+                            score={toAuraScore(member)}
                             grade={member.grade}
                           />
                         </div>
@@ -886,10 +903,13 @@ export default function PerformancePage() {
                 </h3>
                 <p className="mb-2 mt-1 text-sm text-gray-500">
                   {bestDept
-                    ? `Top: ${bestDept.name} (${Math.round(bestDept.avg)}%)`
+                    ? `Top: ${bestDept.name} (${bestDept.avg.toFixed(1)})`
                     : 'No data available'}
                 </p>
-                <Progress value={bestDept?.avg || 0} className="h-2" />
+                <Progress
+                  value={bestDept ? (bestDept.avg / 5) * 100 : 0}
+                  className="h-2"
+                />
               </CardContent>
             </Card>
             <Card className="cursor-pointer transition-shadow hover:shadow-md">
@@ -916,7 +936,7 @@ export default function PerformancePage() {
                 </div>
                 <h3 className="text-lg font-semibold">Top Performers</h3>
                 <p className="mt-1 text-sm text-gray-500">
-                  Employees with Aura Score 90+
+                  Employees with Aura 4.5+
                 </p>
               </CardContent>
             </Card>

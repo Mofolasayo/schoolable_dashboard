@@ -36,8 +36,7 @@ const envSchema = z.object({
     .default('http://localhost:3000'),
   NEXT_PUBLIC_API_URL: z
     .string()
-    .url('NEXT_PUBLIC_API_URL must be an absolute URL')
-    .optional(),
+    .url('NEXT_PUBLIC_API_URL must be an absolute URL'),
   NEXT_PUBLIC_ENABLE_DEV_TOOLS: booleanFlag,
 });
 

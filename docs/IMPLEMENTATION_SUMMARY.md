@@ -1,4 +1,4 @@
-# Schoolable Dashboard - Implementation Summary
+# WorkSight Dashboard - Implementation Summary
 
 **Date:** 2025-11-30  
 **Status:** ✅ Complete - Overview Page Fully Implemented
@@ -9,7 +9,7 @@
 
 ### ✅ Complete Dashboard Replication
 
-Successfully replicated the "KPI Rating Platform" dashboard design exactly as shown in the reference image, branded as **Schoolable**.
+Successfully replicated the "KPI Rating Platform" dashboard design exactly as shown in the reference image, branded as **WorkSight**.
 
 ---
 
@@ -17,7 +17,7 @@ Successfully replicated the "KPI Rating Platform" dashboard design exactly as sh
 
 ### Top Header
 
-- ✅ **Logo**: Blue "S" icon with "Schoolable" text
+- ✅ **Logo**: Blue "S" icon with "WorkSight" text
 - ✅ **Search Bar**: Center-aligned search with placeholder "Search staff, tasks, KPIs..."
 - ✅ **Notifications**: Bell icon with red dot indicator
 - ✅ **Help Icon**: Question mark icon
@@ -325,7 +325,7 @@ The reference design image is stored at:
 
 ## Summary
 
-✅ **Successfully created a complete, pixel-perfect replication of the KPI Rating Platform dashboard, rebranded as "Schoolable".**
+✅ **Successfully created a complete, pixel-perfect replication of the KPI Rating Platform dashboard, rebranded as "WorkSight".**
 
 The Overview page is fully functional with all UI elements in place. Navigation to all other pages works, with placeholder content ready for future implementation. The foundation is solid and follows Next.js best practices, making it easy to add real functionality and backend integration.
 

@@ -1,0 +1,40 @@
+service: schoolable-dashboard
+image: mofolasayo/schoolable_dashboard
+
+servers:
+  web:
+    - <%= ENV.fetch("HETZNER_HOST") %>
+
+ssh:
+  user: deploy
+  keys:
+    - <%= ENV.fetch("KAMAL_SSH_KEY", "~/.ssh/id_rsa") %>
+
+registry:
+  server: ghcr.io
+  username: <%= ENV.fetch("KAMAL_REGISTRY_USERNAME") %>
+  password: <%= ENV.fetch("KAMAL_REGISTRY_PASSWORD") %>
+
+builder:
+  arch: amd64
+  driver: docker
+  context: .
+  args:
+    NEXT_PUBLIC_API_URL: "https://api.<%= ENV.fetch("HETZNER_HOST") %>.sslip.io"
+
+env:
+  clear:
+    NODE_ENV: "production"
+    PORT: "3000"
+    NEXT_PUBLIC_API_URL: "https://api.<%= ENV.fetch("HETZNER_HOST") %>.sslip.io"
+
+readiness_delay: 15
+deploy_timeout: 120
+
+proxy:
+  app_port: 3000
+  ssl: true
+  hosts:
+    - admin.<%= ENV.fetch("HETZNER_HOST") %>.sslip.io
+  healthcheck:
+    path: /

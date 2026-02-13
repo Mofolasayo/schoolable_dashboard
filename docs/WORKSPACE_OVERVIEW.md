@@ -1,8 +1,8 @@
-# Schoolable Workspace Overview
+# WorkSight Workspace Overview
 
 ## Project Summary
 
-The **Schoolable** project consists of two main applications designed to work together as an Automated Rating Platform (ARP) for HR/KPI management in tech startups.
+The **WorkSight** project consists of two main applications designed to work together as an Automated Rating Platform (ARP) for HR/KPI management in tech startups.
 
 ### Repository Structure
 
@@ -14,7 +14,7 @@ The **Schoolable** project consists of two main applications designed to work to
 
 ---
 
-## 1. Schoolable Mobile App (Flutter)
+## 1. WorkSight Mobile App (Flutter)
 
 **Location:** `/Users/mofolasayo-osikoya/schoolable`
 
@@ -70,7 +70,7 @@ lib/
 
 ---
 
-## 2. Schoolable Dashboard (Next.js)
+## 2. WorkSight Dashboard (Next.js)
 
 **Location:** `/Users/mofolasayo-osikoya/schoolable_dashboard`
 

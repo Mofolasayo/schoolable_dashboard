@@ -1,4 +1,5 @@
 import { config } from '@/config';
+import { logger } from '@/lib/logger';
 
 /**
  * API client error class for type-safe error handling
@@ -38,6 +39,10 @@ export async function apiClient<T>(
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
+      logger.warn('API request failed', {
+        endpoint,
+        status: response.status,
+      });
       throw new ApiError(
         error.message || 'An error occurred',
         response.status,
@@ -50,6 +55,7 @@ export async function apiClient<T>(
     if (error instanceof ApiError) {
       throw error;
     }
+    logger.error('API request error', { endpoint, error });
     throw new ApiError('Network error', 0, error);
   }
 }

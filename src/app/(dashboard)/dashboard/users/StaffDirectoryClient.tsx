@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { StaffProfile, getStaffProfiles } from '@/app/actions/staff';
+import {
+  getEmployeeCertificates,
+  type TrainingRecord,
+} from '@/app/actions/certificates';
 import Loading from './loading';
 import {
   Table,
@@ -13,7 +17,7 @@ import {
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -31,24 +35,12 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 
-// Certificate type 
-interface Certificate {
-  id: number;
-  name: string;
-  quarter: string;
-  year: number;
-  status: 'pending' | 'approved' | 'rejected';
-  certificateUrl?: string;
-  createdAt: string;
-  approvedAt?: string;
-}
-
 export default function StaffDirectoryClient() {
   const [staff, setStaff] = useState<StaffProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStaff, setSelectedStaff] = useState<StaffProfile | null>(null);
-  const [certificates, setCertificates] = useState<Certificate[]>([]);
+  const [certificates, setCertificates] = useState<TrainingRecord[]>([]);
   const [loadingCerts, setLoadingCerts] = useState(false);
 
   useEffect(() => {
@@ -60,21 +52,37 @@ export default function StaffDirectoryClient() {
 
   // Fetch certificates when a staff member is selected
   useEffect(() => {
-    if (selectedStaff?.id) {
-      setLoadingCerts(true);
-      // Fetch from API
-      fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'https://schoolable-backend.onrender.com'}/api/performance/training-records/employee/${selectedStaff.id}`)
-        .then(res => res.json())
-        .then(data => {
-          setCertificates(Array.isArray(data) ? data : []);
-        })
-        .catch(() => {
+    let isActive = true;
+
+    const fetchCertificates = async () => {
+      if (!selectedStaff?.id) {
+        if (isActive) {
           setCertificates([]);
-        })
-        .finally(() => setLoadingCerts(false));
-    } else {
-      setCertificates([]);
-    }
+        }
+        return;
+      }
+      setLoadingCerts(true);
+      try {
+        const data = await getEmployeeCertificates(selectedStaff.id);
+        if (isActive) {
+          setCertificates(Array.isArray(data) ? data : []);
+        }
+      } catch {
+        if (isActive) {
+          setCertificates([]);
+        }
+      } finally {
+        if (isActive) {
+          setLoadingCerts(false);
+        }
+      }
+    };
+
+    fetchCertificates();
+
+    return () => {
+      isActive = false;
+    };
   }, [selectedStaff?.id]);
 
   if (isLoading) return <Loading />;
@@ -112,11 +120,23 @@ export default function StaffDirectoryClient() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'approved':
-        return <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">Approved</Badge>;
+        return (
+          <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">
+            Approved
+          </Badge>
+        );
       case 'pending':
-        return <Badge className="bg-amber-50 text-amber-700 border-amber-200">Pending</Badge>;
+        return (
+          <Badge className="border-amber-200 bg-amber-50 text-amber-700">
+            Pending
+          </Badge>
+        );
       case 'rejected':
-        return <Badge className="bg-rose-50 text-rose-700 border-rose-200">Rejected</Badge>;
+        return (
+          <Badge className="border-rose-200 bg-rose-50 text-rose-700">
+            Rejected
+          </Badge>
+        );
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }
@@ -219,6 +239,11 @@ export default function StaffDirectoryClient() {
         onOpenChange={(open) => !open && setSelectedStaff(null)}
       >
         <SheetContent className="overflow-y-auto border-l p-0 shadow-2xl sm:max-w-md">
+          <SheetTitle className="sr-only">
+            {selectedStaff?.full_name
+              ? `${selectedStaff.full_name} profile`
+              : 'Staff profile'}
+          </SheetTitle>
           {selectedStaff && (
             <div className="flex h-full flex-col">
               {/* Header */}
@@ -350,7 +375,7 @@ export default function StaffDirectoryClient() {
 
                 {/* Certificates Section */}
                 <section>
-                  <h3 className="mb-4 pl-1 text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                  <h3 className="mb-4 flex items-center gap-2 pl-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
                     <Award className="h-4 w-4" />
                     Training Certificates
                   </h3>
@@ -360,23 +385,25 @@ export default function StaffDirectoryClient() {
                       <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
                     </div>
                   ) : certificates.length === 0 ? (
-                    <div className="rounded-lg bg-slate-50 border border-slate-100 p-6 text-center">
-                      <Award className="h-8 w-8 mx-auto mb-2 text-slate-300" />
-                      <p className="text-sm text-slate-500">No certificates uploaded yet</p>
+                    <div className="rounded-lg border border-slate-100 bg-slate-50 p-6 text-center">
+                      <Award className="mx-auto mb-2 h-8 w-8 text-slate-300" />
+                      <p className="text-sm text-slate-500">
+                        No certificates uploaded yet
+                      </p>
                     </div>
                   ) : (
                     <div className="space-y-3">
                       {certificates.map((cert) => (
                         <div
                           key={cert.id}
-                          className="flex items-center gap-3 p-3 rounded-lg border border-slate-100 bg-white hover:bg-slate-50 transition-colors"
+                          className="flex items-center gap-3 rounded-lg border border-slate-100 bg-white p-3 transition-colors hover:bg-slate-50"
                         >
                           <div className="flex-shrink-0">
                             {getStatusIcon(cert.status)}
                           </div>
-                          <div className="flex-1 min-w-0">
+                          <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-slate-700 truncate">
+                              <span className="truncate text-sm font-medium text-slate-700">
                                 {cert.name}
                               </span>
                               {cert.certificateUrl && (
@@ -392,7 +419,8 @@ export default function StaffDirectoryClient() {
                               )}
                             </div>
                             <div className="text-xs text-slate-400">
-                              {cert.quarter} {cert.year} • {formatDate(cert.createdAt)}
+                              {cert.quarter} {cert.year} •{' '}
+                              {formatDate(cert.createdAt)}
                             </div>
                           </div>
                           <div className="flex-shrink-0">
@@ -417,4 +445,3 @@ export default function StaffDirectoryClient() {
     </div>
   );
 }
-

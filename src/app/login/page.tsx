@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useState, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { login } from './actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +19,7 @@ function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const { toast } = useToast();
   const searchParams = useSearchParams();
+  const router = useRouter();
 
   // Show error from URL params
   useEffect(() => {
@@ -51,9 +52,10 @@ function LoginForm() {
       // Success toast
       toast({
         title: 'Success!',
-        description: 'Welcome back to Schoolable Admin.',
+        description: 'Welcome back to WorkSight Admin.',
         className: 'bg-green-50 border-green-200',
       });
+      router.push('/dashboard');
     } catch (err) {
       const errorMessage =
         err instanceof Error ? err.message : 'Invalid credentials';
@@ -72,13 +74,13 @@ function LoginForm() {
       <CardHeader className="space-y-3">
         <div className="mb-4 flex justify-center">
           <img
-            src="/schoolable_logo.png"
-            alt="Schoolable"
+            src="/worksight_logo.png"
+            alt="WorkSight"
             className="h-16 w-auto object-contain"
           />
         </div>
         <CardTitle className="text-center text-2xl font-bold text-slate-900">
-          Schoolable Admin
+          WorkSight Admin
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -160,12 +162,8 @@ function LoginForm() {
             <p className="mb-1 font-semibold text-slate-700">
               Test Credentials:
             </p>
-            <p className="text-slate-600">
-              Email: schoolableadmin@gmail.com
-            </p>
-            <p className="text-slate-600">
-              Password: schoolableadmin123
-            </p>
+            <p className="text-slate-600">Email: schoolableadmin@gmail.com</p>
+            <p className="text-slate-600">Password: schoolableadmin123</p>
           </div>
         )}
       </CardContent>
@@ -180,7 +178,7 @@ function LoginFormFallback() {
         <div className="mb-4 flex justify-center">
           <div className="h-16 w-16 animate-pulse rounded-lg bg-slate-200" />
         </div>
-        <div className="h-8 mx-auto w-48 animate-pulse rounded bg-slate-200" />
+        <div className="mx-auto h-8 w-48 animate-pulse rounded bg-slate-200" />
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">

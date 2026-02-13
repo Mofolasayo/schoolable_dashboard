@@ -7,12 +7,12 @@ import { Toaster } from '@/components/ui/toaster';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Schoolable | HR Dashboard',
-  description: 'Super Admin Dashboard for Schoolable HR Platform',
+  title: 'WorkSight | HR Dashboard',
+  description: 'Super Admin Dashboard for WorkSight HR Platform',
   icons: {
-    icon: '/schoolable_logo.png',
-    shortcut: '/schoolable_logo.png',
-    apple: '/schoolable_logo.png',
+    icon: '/worksight_logo.png',
+    shortcut: '/worksight_logo.png',
+    apple: '/worksight_logo.png',
   },
 };
 
@@ -23,7 +23,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
+      <body className={inter.className} suppressHydrationWarning>
         <Providers>{children}</Providers>
         <Toaster />
       </body>
